@@ -79,6 +79,9 @@ export type TemplateContext = MsgContext & {
   BodyStripped?: string;
   SessionId?: string;
   IsNewSession?: string;
+  ReplyText?: string;
+  ReplyTextFile?: string;
+  ReplyAudioPath?: string;
 };
 
 // Simple {{Placeholder}} interpolation using inbound message context.

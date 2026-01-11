@@ -228,6 +228,13 @@ const TranscribeAudioSchema = z
   })
   .optional();
 
+const AudioReplySchema = z
+  .object({
+    command: z.array(z.string()),
+    timeoutSeconds: z.number().int().positive().optional(),
+  })
+  .optional();
+
 const HexColorSchema = z
   .string()
   .regex(/^#?[0-9a-fA-F]{6}$/, "expected hex color (RRGGBB)");
@@ -959,6 +966,7 @@ const BroadcastSchema = z
 const AudioSchema = z
   .object({
     transcription: TranscribeAudioSchema,
+    reply: AudioReplySchema,
   })
   .optional();
 

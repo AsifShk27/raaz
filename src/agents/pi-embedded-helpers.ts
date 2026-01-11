@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -10,13 +11,7 @@ import {
   normalizeThinkLevel,
   type ThinkLevel,
 } from "../auto-reply/thinking.js";
-import type { ClawdbotConfig } from "../config/config.js";
-import { formatSandboxToolPolicyBlockedMessage } from "./sandbox.js";
-import {
-  isValidCloudCodeAssistToolId,
-  sanitizeToolCallId,
-  sanitizeToolCallIdsForCloudCodeAssist,
-} from "./tool-call-id.js";
+
 import { sanitizeContentBlocksImages } from "./tool-images.js";
 import type { WorkspaceBootstrapFile } from "./workspace.js";
 
@@ -91,15 +86,11 @@ function isEmptyAssistantErrorMessage(
 export async function sanitizeSessionMessagesImages(
   messages: AgentMessage[],
   label: string,
-  options?: { sanitizeToolCallIds?: boolean; enforceToolCallLast?: boolean },
 ): Promise<AgentMessage[]> {
   // We sanitize historical session messages because Anthropic can reject a request
   // if the transcript contains oversized base64 images (see MAX_IMAGE_DIMENSION_PX).
-  const sanitizedIds = options?.sanitizeToolCallIds
-    ? sanitizeToolCallIdsForCloudCodeAssist(messages)
-    : messages;
   const out: AgentMessage[] = [];
-  for (const msg of sanitizedIds) {
+  for (const msg of messages) {
     if (!msg || typeof msg !== "object") {
       out.push(msg);
       continue;
@@ -113,7 +104,17 @@ export async function sanitizeSessionMessagesImages(
         content as ContentBlock[],
         label,
       )) as unknown as typeof toolMsg.content;
-      out.push({ ...toolMsg, content: nextContent });
+      const sanitizedToolCallId = toolMsg.toolCallId
+        ? sanitizeToolCallId(toolMsg.toolCallId)
+        : undefined;
+      const sanitizedMsg = {
+        ...toolMsg,
+        content: nextContent,
+        ...(sanitizedToolCallId && {
+          toolCallId: sanitizedToolCallId,
+        }),
+      };
+      out.push(sanitizedMsg);
       continue;
     }
 
@@ -143,28 +144,28 @@ export async function sanitizeSessionMessagesImages(
           if (rec.type !== "text" || typeof rec.text !== "string") return true;
           return rec.text.trim().length > 0;
         });
-        const normalizedContent = options?.enforceToolCallLast
-          ? (() => {
-              let lastToolIndex = -1;
-              for (let i = filteredContent.length - 1; i >= 0; i -= 1) {
-                const block = filteredContent[i];
-                if (!block || typeof block !== "object") continue;
-                const type = (block as { type?: unknown }).type;
-                if (
-                  type === "functionCall" ||
-                  type === "toolUse" ||
-                  type === "toolCall"
-                ) {
-                  lastToolIndex = i;
-                  break;
-                }
+        // Also sanitize tool call IDs in assistant messages (function call blocks)
+        const sanitizedContent = await Promise.all(
+          filteredContent.map(async (block) => {
+            if (block && typeof block === "object") {
+              const record = block as unknown as Record<string, unknown>;
+              const type = record.type;
+              const id = record.id;
+              if (
+                (type === "functionCall" || type === "toolCall") &&
+                typeof id === "string"
+              ) {
+                return {
+                  ...record,
+                  id: sanitizeToolCallId(id),
+                };
               }
-              if (lastToolIndex === -1) return filteredContent;
-              return filteredContent.slice(0, lastToolIndex + 1);
-            })()
-          : filteredContent;
+            }
+            return block;
+          }),
+        );
         const finalContent = (await sanitizeContentBlocksImages(
-          normalizedContent as unknown as ContentBlock[],
+          sanitizedContent as unknown as ContentBlock[],
           label,
         )) as unknown as typeof assistantMsg.content;
         if (finalContent.length === 0) {
@@ -250,25 +251,10 @@ export function isContextOverflowError(errorMessage?: string): boolean {
 
 export function formatAssistantErrorText(
   msg: AssistantMessage,
-  opts?: { cfg?: ClawdbotConfig; sessionKey?: string },
 ): string | undefined {
   if (msg.stopReason !== "error") return undefined;
   const raw = (msg.errorMessage ?? "").trim();
   if (!raw) return "LLM request failed with an unknown error.";
-
-  const unknownTool =
-    raw.match(/unknown tool[:\s]+["']?([a-z0-9_-]+)["']?/i) ??
-    raw.match(
-      /tool\s+["']?([a-z0-9_-]+)["']?\s+(?:not found|is not available)/i,
-    );
-  if (unknownTool?.[1]) {
-    const rewritten = formatSandboxToolPolicyBlockedMessage({
-      cfg: opts?.cfg,
-      sessionKey: opts?.sessionKey,
-      toolName: unknownTool[1],
-    });
-    if (rewritten) return rewritten;
-  }
 
   // Check for context overflow (413) errors
   if (isContextOverflowError(raw)) {
@@ -305,7 +291,6 @@ const ERROR_PATTERNS = {
     "resource has been exhausted",
     "quota exceeded",
     "resource_exhausted",
-    "usage limit",
   ],
   timeout: [
     "timeout",
@@ -340,6 +325,7 @@ const ERROR_PATTERNS = {
     "tool_use_id",
     "messages.1.content.1.tool_use.id",
     "invalid request format",
+    "tool call id is invalid",
   ],
 } as const;
 
@@ -535,11 +521,12 @@ export function validateGeminiTurns(messages: AgentMessage[]): AgentMessage[] {
 }
 
 // ── Messaging tool duplicate detection ──────────────────────────────────────
-// When the agent uses a messaging tool (telegram, discord, slack, message, sessions_send)
+// When the agent uses a messaging tool (telegram, discord, slack, sessions_send)
 // to send a message, we track the text so we can suppress duplicate block replies.
 // The LLM sometimes elaborates or wraps the same content, so we use substring matching.
 
 const MIN_DUPLICATE_TEXT_LENGTH = 10;
+const MAX_TOOL_CALL_ID_LENGTH = 64;
 
 /**
  * Normalize text for duplicate comparison.
@@ -557,22 +544,6 @@ export function normalizeTextForComparison(text: string): string {
     .trim();
 }
 
-export function isMessagingToolDuplicateNormalized(
-  normalized: string,
-  normalizedSentTexts: string[],
-): boolean {
-  if (normalizedSentTexts.length === 0) return false;
-  if (!normalized || normalized.length < MIN_DUPLICATE_TEXT_LENGTH)
-    return false;
-  return normalizedSentTexts.some((normalizedSent) => {
-    if (!normalizedSent || normalizedSent.length < MIN_DUPLICATE_TEXT_LENGTH)
-      return false;
-    return (
-      normalized.includes(normalizedSent) || normalizedSent.includes(normalized)
-    );
-  });
-}
-
 /**
  * Check if a text is a duplicate of any previously sent messaging tool text.
  * Uses substring matching to handle LLM elaboration (e.g., wrapping in quotes,
@@ -583,7 +554,35 @@ export function isMessagingToolDuplicateNormalized(
 // OpenAI Codex generates IDs like "call_abc123|item_456" with pipe characters,
 // but Google requires IDs matching ^[a-zA-Z0-9_-]+$ pattern.
 // This function sanitizes tool call IDs by replacing invalid characters with underscores.
-export { sanitizeToolCallId, isValidCloudCodeAssistToolId };
+
+export function sanitizeToolCallId(id: string): string {
+  if (!id || typeof id !== "string") return "default_tool_id";
+
+  const cloudCodeAssistPatternReplacement = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const trimmedInvalidStartChars = cloudCodeAssistPatternReplacement.replace(
+    /^[^a-zA-Z0-9_-]+/,
+    "",
+  );
+
+  const sanitized =
+    trimmedInvalidStartChars.length > 0
+      ? trimmedInvalidStartChars
+      : "sanitized_tool_id";
+
+  if (sanitized.length <= MAX_TOOL_CALL_ID_LENGTH) return sanitized;
+
+  const hash = createHash("sha256").update(sanitized).digest("hex").slice(0, 10);
+  const prefixLength = Math.max(
+    1,
+    MAX_TOOL_CALL_ID_LENGTH - hash.length - 1,
+  );
+  return `${sanitized.slice(0, prefixLength)}_${hash}`;
+}
+
+export function isValidCloudCodeAssistToolId(id: string): boolean {
+  if (!id || typeof id !== "string") return false;
+  return /^[a-zA-Z0-9_-]+$/.test(id);
+}
 
 export function isMessagingToolDuplicate(
   text: string,
@@ -593,8 +592,13 @@ export function isMessagingToolDuplicate(
   const normalized = normalizeTextForComparison(text);
   if (!normalized || normalized.length < MIN_DUPLICATE_TEXT_LENGTH)
     return false;
-  return isMessagingToolDuplicateNormalized(
-    normalized,
-    sentTexts.map(normalizeTextForComparison),
-  );
+  return sentTexts.some((sent) => {
+    const normalizedSent = normalizeTextForComparison(sent);
+    if (!normalizedSent || normalizedSent.length < MIN_DUPLICATE_TEXT_LENGTH)
+      return false;
+    // Substring match: either text contains the other
+    return (
+      normalized.includes(normalizedSent) || normalizedSent.includes(normalized)
+    );
+  });
 }

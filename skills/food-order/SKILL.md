@@ -9,6 +9,8 @@ metadata: {"clawdbot":{"emoji":"🥡","requires":{"bins":["ordercli"]},"install"
 
 Goal: reorder a previous Foodora order safely (preview first; confirm only on explicit user “yes/confirm/place the order”).
 
+For India, use `zomato-ordering` or `swiggy-ordering` (browser-based ordering).
+
 Hard safety rules
 - Never run `ordercli foodora reorder ... --confirm` unless user explicitly confirms placing the order.
 - Prefer preview-only steps first; show what will happen; ask for confirmation.
