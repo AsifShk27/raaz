@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isSubagentSessionKey } from "../routing/session-key.js";
+import { runCommandWithTimeout } from "../process/exec.js";
 import { resolveUserPath } from "../utils.js";
 
 export function resolveDefaultAgentWorkspaceDir(
@@ -178,6 +179,205 @@ async function loadTemplate(name: string, fallback: string): Promise<string> {
   }
 }
 
+const QMD_MEMORY_MASK = "**/*.md";
+const QMD_INDEX_SUBDIR = path.join(".clawdbot", "qmd");
+
+type QmdSearchHit = {
+  file?: string;
+  filepath?: string;
+};
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeCollectionName(input: string): string {
+  const normalized = input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || "workspace";
+}
+
+function buildMemoryCollectionName(workspaceDir: string): string {
+  const base = normalizeCollectionName(path.basename(workspaceDir));
+  return `${base}_memory`;
+}
+
+function buildMemoryIndexPath(workspaceDir: string, collectionName: string): string {
+  return path.join(workspaceDir, QMD_INDEX_SUBDIR, `${collectionName}.sqlite`);
+}
+
+function parseQmdSearchOutput(output: string): QmdSearchHit[] | null {
+  const match = output.match(/\[[\s\S]*\]\s*$/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[0]) as QmdSearchHit[];
+  } catch {
+    return null;
+  }
+}
+
+function resolveQmdFilePath(memoryDir: string, fileRef?: string): string | null {
+  if (!fileRef) return null;
+  if (fileRef.startsWith("qmd://")) {
+    const withoutScheme = fileRef.slice("qmd://".length);
+    const slashIndex = withoutScheme.indexOf("/");
+    if (slashIndex === -1) return null;
+    const relativePath = withoutScheme.slice(slashIndex + 1);
+    if (!relativePath) return null;
+    const resolved = path.resolve(memoryDir, relativePath);
+    const rel = path.relative(memoryDir, resolved);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
+    return resolved;
+  }
+  const resolved = path.isAbsolute(fileRef)
+    ? fileRef
+    : path.resolve(memoryDir, fileRef);
+  const rel = path.relative(memoryDir, resolved);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
+  return resolved;
+}
+
+async function collectMarkdownFiles(dir: string): Promise<string[]> {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const results: string[] = [];
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...(await collectMarkdownFiles(entryPath)));
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      results.push(entryPath);
+    }
+  }
+  return results;
+}
+
+async function getNewestMtimeMs(files: string[]): Promise<number | null> {
+  let newest: number | null = null;
+  for (const file of files) {
+    try {
+      const stat = await fs.stat(file);
+      if (newest === null || stat.mtimeMs > newest) {
+        newest = stat.mtimeMs;
+      }
+    } catch {
+      // ignore missing files
+    }
+  }
+  return newest;
+}
+
+async function runQmdCommand(
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  timeoutMs: number,
+) {
+  try {
+    return await runCommandWithTimeout(["qmd", ...args], { timeoutMs, env });
+  } catch {
+    return null;
+  }
+}
+
+async function tryQmdMemorySearch(params: {
+  workspaceDir: string;
+  memoryDir: string;
+  memoryFiles: string[];
+  newestMemoryMtimeMs: number | null;
+  query: string;
+  maxResults: number;
+}): Promise<string[] | null> {
+  if (!params.query || params.maxResults <= 0 || params.memoryFiles.length === 0) {
+    return null;
+  }
+  const collectionName = buildMemoryCollectionName(params.workspaceDir);
+  const indexPath = buildMemoryIndexPath(params.workspaceDir, collectionName);
+  const indexDir = path.dirname(indexPath);
+
+  try {
+    await fs.mkdir(indexDir, { recursive: true });
+  } catch {
+    return null;
+  }
+
+  const env = { INDEX_PATH: indexPath };
+  const listResult = await runQmdCommand(
+    ["collection", "list"],
+    env,
+    8_000,
+  );
+  if (!listResult || listResult.code !== 0) return null;
+
+  const collectionRegex = new RegExp(
+    `^${escapeRegex(collectionName)} \\(qmd://`,
+    "m",
+  );
+  const hasCollection = collectionRegex.test(listResult.stdout);
+  let didUpdate = false;
+
+  if (!hasCollection) {
+    const addResult = await runQmdCommand(
+      [
+        "collection",
+        "add",
+        params.memoryDir,
+        "--name",
+        collectionName,
+        "--mask",
+        QMD_MEMORY_MASK,
+      ],
+      env,
+      30_000,
+    );
+    if (!addResult || addResult.code !== 0) return null;
+    didUpdate = true;
+  } else if (params.newestMemoryMtimeMs) {
+    const indexMtimeMs = await fs
+      .stat(indexPath)
+      .then((stat) => stat.mtimeMs)
+      .catch(() => null);
+    if (!indexMtimeMs || params.newestMemoryMtimeMs > indexMtimeMs) {
+      const updateResult = await runQmdCommand(["update"], env, 30_000);
+      if (updateResult && updateResult.code === 0) {
+        didUpdate = true;
+      }
+    }
+  }
+
+  if (didUpdate) {
+    await runQmdCommand(["embed"], env, 180_000);
+  }
+
+  const vsearchResult = await runQmdCommand(
+    ["vsearch", params.query, "--json", "-n", String(params.maxResults)],
+    env,
+    60_000,
+  );
+  if (!vsearchResult || vsearchResult.code !== 0) return null;
+
+  const hits = parseQmdSearchOutput(vsearchResult.stdout);
+  if (!hits) return null;
+
+  const memorySet = new Set(params.memoryFiles.map((file) => path.resolve(file)));
+  const resolved: string[] = [];
+  const seen = new Set<string>();
+
+  for (const hit of hits) {
+    const fileRef = hit.file ?? hit.filepath;
+    const resolvedPath = resolveQmdFilePath(params.memoryDir, fileRef);
+    if (!resolvedPath) continue;
+    const normalized = path.resolve(resolvedPath);
+    if (!memorySet.has(normalized)) continue;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    resolved.push(normalized);
+    if (resolved.length >= params.maxResults) break;
+  }
+
+  return resolved;
+}
+
 export type WorkspaceBootstrapFileName =
   | typeof DEFAULT_AGENTS_FILENAME
   | typeof DEFAULT_SOUL_FILENAME
@@ -185,7 +385,8 @@ export type WorkspaceBootstrapFileName =
   | typeof DEFAULT_IDENTITY_FILENAME
   | typeof DEFAULT_USER_FILENAME
   | typeof DEFAULT_HEARTBEAT_FILENAME
-  | typeof DEFAULT_BOOTSTRAP_FILENAME;
+  | typeof DEFAULT_BOOTSTRAP_FILENAME
+  | `memory/${string}`;
 
 export type WorkspaceBootstrapFile = {
   name: WorkspaceBootstrapFileName;
@@ -310,6 +511,14 @@ export async function ensureAgentWorkspace(params?: {
 
 export async function loadWorkspaceBootstrapFiles(
   dir: string,
+  options?: {
+    /** Optional query to retrieve relevant memory notes. */
+    query?: string;
+    /** Max memory files to attach (default: 3). */
+    maxMemoryFiles?: number;
+    /** Max bytes to include per memory file (default: 20k). */
+    maxMemoryFileBytes?: number;
+  },
 ): Promise<WorkspaceBootstrapFile[]> {
   const resolvedDir = resolveUserPath(dir);
 
@@ -347,10 +556,111 @@ export async function loadWorkspaceBootstrapFiles(
     },
   ];
 
+  const memoryDir = path.join(resolvedDir, "memory");
+  const query = options?.query?.trim();
+  const maxMemoryFiles = options?.maxMemoryFiles ?? 3;
+  const maxMemoryFileBytes = options?.maxMemoryFileBytes ?? 20_000;
+
+  try {
+    const memoryFiles = await collectMarkdownFiles(memoryDir);
+    const newestMemoryMtimeMs = await getNewestMtimeMs(memoryFiles);
+    const memoryMap = new Map<string, string>();
+
+    for (const filePath of memoryFiles) {
+      const rel = path
+        .relative(memoryDir, filePath)
+        .split(path.sep)
+        .join("/");
+      if (rel && !rel.startsWith("..")) {
+        memoryMap.set(rel, filePath);
+      }
+    }
+
+    const memoryEntries: string[] = [];
+
+    if (query) {
+      const qmdMatches =
+        (await tryQmdMemorySearch({
+          workspaceDir: resolvedDir,
+          memoryDir,
+          memoryFiles,
+          newestMemoryMtimeMs,
+          query,
+          maxResults: maxMemoryFiles,
+        })) ?? [];
+
+      if (qmdMatches.length > 0) {
+        memoryEntries.push(...qmdMatches);
+      } else {
+        const terms = query
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean);
+        const scored: Array<{ filePath: string; score: number }> = [];
+        for (const filePath of memoryFiles) {
+          try {
+            const content = await fs.readFile(filePath, "utf-8");
+            const hay = content.toLowerCase();
+            let score = 0;
+            for (const term of terms) {
+              if (term.length < 3) continue;
+              if (hay.includes(term)) score += 1;
+            }
+            scored.push({ filePath, score });
+          } catch {
+            // ignore unreadable files
+          }
+        }
+        scored
+          .sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return b.filePath.localeCompare(a.filePath);
+          })
+          .slice(0, maxMemoryFiles)
+          .forEach((entry) => memoryEntries.push(entry.filePath));
+      }
+    } else {
+      const always = [
+        "trading-platform.md",
+        "market-digest.md",
+        "2026-01-09-lid-fix.md",
+      ];
+      for (const file of always) {
+        const filePath = memoryMap.get(file);
+        if (filePath) memoryEntries.push(filePath);
+      }
+    }
+
+    const seen = new Set<string>();
+    for (const filePath of memoryEntries) {
+      const normalized = path.resolve(filePath);
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      const rel = path
+        .relative(memoryDir, normalized)
+        .split(path.sep)
+        .join("/");
+      if (!rel || rel.startsWith("..")) continue;
+      entries.push({
+        name: `memory/${rel}`,
+        filePath: normalized,
+      });
+    }
+  } catch {
+    // No memory directory; ignore.
+  }
+
   const result: WorkspaceBootstrapFile[] = [];
   for (const entry of entries) {
     try {
-      const content = await fs.readFile(entry.filePath, "utf-8");
+      let content = await fs.readFile(entry.filePath, "utf-8");
+      if (
+        entry.name.startsWith("memory/") &&
+        maxMemoryFileBytes > 0 &&
+        content.length > maxMemoryFileBytes
+      ) {
+        content = content.slice(0, maxMemoryFileBytes);
+      }
       result.push({
         name: entry.name,
         path: entry.filePath,

@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceBootstrapFile } from "./workspace.js";
+import { runCommandWithTimeout } from "../process/exec.js";
 import {
   DEFAULT_AGENTS_FILENAME,
   DEFAULT_BOOTSTRAP_FILENAME,
@@ -13,7 +14,18 @@ import {
   DEFAULT_USER_FILENAME,
   ensureAgentWorkspace,
   filterBootstrapFilesForSession,
+  loadWorkspaceBootstrapFiles,
 } from "./workspace.js";
+
+vi.mock("../process/exec.js", () => ({
+  runCommandWithTimeout: vi.fn(),
+}));
+
+const runCommandWithTimeoutMock = vi.mocked(runCommandWithTimeout);
+
+beforeEach(() => {
+  runCommandWithTimeoutMock.mockReset();
+});
 
 describe("ensureAgentWorkspace", () => {
   it("creates directory and bootstrap files when missing", async () => {
@@ -129,5 +141,79 @@ describe("filterBootstrapFilesForSession", () => {
       DEFAULT_AGENTS_FILENAME,
       DEFAULT_TOOLS_FILENAME,
     ]);
+  });
+});
+
+describe("loadWorkspaceBootstrapFiles", () => {
+  it("uses qmd results when available", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "clawdbot-ws-"));
+    const memoryDir = path.join(dir, "memory");
+    await fs.mkdir(memoryDir, { recursive: true });
+    await fs.writeFile(path.join(memoryDir, "alpha.md"), "market digest", "utf-8");
+    await fs.writeFile(path.join(memoryDir, "beta.md"), "other note", "utf-8");
+
+    runCommandWithTimeoutMock.mockImplementation(async (argv) => {
+      const sub = argv[1];
+      if (sub === "collection" && argv[2] === "list") {
+        return {
+          stdout: "collections\nmemory (qmd://memory/)\n",
+          stderr: "",
+          code: 0,
+          signal: null,
+          killed: false,
+        };
+      }
+      if (sub === "vsearch") {
+        const json = JSON.stringify(
+          [{ file: "qmd://memory/alpha.md", score: 0.9 }],
+          null,
+          2,
+        );
+        return {
+          stdout: `Searching...\n${json}`,
+          stderr: "",
+          code: 0,
+          signal: null,
+          killed: false,
+        };
+      }
+      return {
+        stdout: "",
+        stderr: "",
+        code: 0,
+        signal: null,
+        killed: false,
+      };
+    });
+
+    const files = await loadWorkspaceBootstrapFiles(dir, {
+      query: "market digest",
+      maxMemoryFiles: 1,
+    });
+    const memoryFiles = files.filter((file) => file.name.startsWith("memory/"));
+    expect(memoryFiles).toHaveLength(1);
+    expect(memoryFiles[0]?.name).toBe("memory/alpha.md");
+  });
+
+  it("falls back to keyword scoring when qmd fails", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "clawdbot-ws-"));
+    const memoryDir = path.join(dir, "memory");
+    await fs.mkdir(memoryDir, { recursive: true });
+    await fs.writeFile(
+      path.join(memoryDir, "alpha.md"),
+      "market digest",
+      "utf-8",
+    );
+    await fs.writeFile(path.join(memoryDir, "beta.md"), "other note", "utf-8");
+
+    runCommandWithTimeoutMock.mockRejectedValue(new Error("qmd missing"));
+
+    const files = await loadWorkspaceBootstrapFiles(dir, {
+      query: "market digest",
+      maxMemoryFiles: 1,
+    });
+    const memoryFiles = files.filter((file) => file.name.startsWith("memory/"));
+    expect(memoryFiles).toHaveLength(1);
+    expect(memoryFiles[0]?.name).toBe("memory/alpha.md");
   });
 });
