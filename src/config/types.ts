@@ -1081,6 +1081,13 @@ export type AudioConfig = {
     command: string[];
     timeoutSeconds?: number;
   };
+  reply?: {
+    // Optional CLI to turn reply text into audio; templated args.
+    // Use {{ReplyText}} or {{ReplyTextFile}} (path with reply text) and {{ReplyAudioPath}}.
+    // Command should print MEDIA:<path> to stdout (or write to ReplyAudioPath).
+    command: string[];
+    timeoutSeconds?: number;
+  };
 };
 
 export type MessagesConfig = {
