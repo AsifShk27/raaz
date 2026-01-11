@@ -2,11 +2,11 @@ import {
   resolveEffectiveMessagesConfig,
   resolveMessagePrefix,
 } from "../agents/identity.js";
+import { synthesizeReplyAudio } from "../auto-reply/audio-reply.js";
 import {
   chunkMarkdownText,
   resolveTextChunkLimit,
 } from "../auto-reply/chunk.js";
-import { synthesizeReplyAudio } from "../auto-reply/audio-reply.js";
 import { formatAgentEnvelope } from "../auto-reply/envelope.js";
 import {
   normalizeGroupActivation,
@@ -30,8 +30,8 @@ import { dispatchReplyWithBufferedBlockDispatcher } from "../auto-reply/reply/pr
 import { getReplyFromConfig } from "../auto-reply/reply.js";
 import type { MsgContext } from "../auto-reply/templating.js";
 import { HEARTBEAT_TOKEN, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
-import type { ReplyPayload } from "../auto-reply/types.js";
 import { isAudio } from "../auto-reply/transcription.js";
+import type { ReplyPayload } from "../auto-reply/types.js";
 import { toLocationContext } from "../channels/location.js";
 import { resolveWhatsAppHeartbeatRecipients } from "../channels/plugins/whatsapp-heartbeat.js";
 import { waitForever } from "../cli/wait.js";
