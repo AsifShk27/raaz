@@ -6,6 +6,7 @@ import {
   chunkMarkdownText,
   resolveTextChunkLimit,
 } from "../auto-reply/chunk.js";
+import { synthesizeReplyAudio } from "../auto-reply/audio-reply.js";
 import { formatAgentEnvelope } from "../auto-reply/envelope.js";
 import {
   normalizeGroupActivation,
@@ -27,8 +28,10 @@ import {
 } from "../auto-reply/reply/mentions.js";
 import { dispatchReplyWithBufferedBlockDispatcher } from "../auto-reply/reply/provider-dispatcher.js";
 import { getReplyFromConfig } from "../auto-reply/reply.js";
+import type { MsgContext } from "../auto-reply/templating.js";
 import { HEARTBEAT_TOKEN, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import type { ReplyPayload } from "../auto-reply/types.js";
+import { isAudio } from "../auto-reply/transcription.js";
 import { waitForever } from "../cli/wait.js";
 import { loadConfig } from "../config/config.js";
 import {
@@ -596,6 +599,7 @@ async function deliverWebReply(params: {
   replyLogger: ReturnType<typeof getChildLogger>;
   connectionId?: string;
   skipLog?: boolean;
+  sendTextBeforeMedia?: boolean;
 }) {
   const {
     replyResult,
@@ -605,6 +609,7 @@ async function deliverWebReply(params: {
     replyLogger,
     connectionId,
     skipLog,
+    sendTextBeforeMedia,
   } = params;
   const replyStarted = Date.now();
   const textChunks = chunkMarkdownText(replyResult.text || "", textLimit);
@@ -646,8 +651,7 @@ async function deliverWebReply(params: {
     throw lastErr;
   };
 
-  // Text-only replies
-  if (mediaList.length === 0 && textChunks.length) {
+  const sendTextChunks = async () => {
     const totalChunks = textChunks.length;
     for (const [index, chunk] of textChunks.entries()) {
       const chunkStarted = Date.now();
@@ -673,10 +677,24 @@ async function deliverWebReply(params: {
       },
       "auto-reply sent (text)",
     );
+  };
+
+  const hasMedia = mediaList.length > 0;
+  const sendTextFirst = sendTextBeforeMedia === true && textChunks.length > 0;
+
+  if (sendTextFirst) {
+    await sendTextChunks();
+    if (!hasMedia) {
+      return;
+    }
+  } else if (!hasMedia && textChunks.length) {
+    await sendTextChunks();
+    return;
+  } else if (!hasMedia) {
     return;
   }
 
-  const remainingText = [...textChunks];
+  const remainingText = sendTextFirst ? [] : [...textChunks];
 
   // Media (with optional caption on first item)
   for (const [index, mediaUrl] of mediaList.entries()) {
@@ -1322,43 +1340,45 @@ export async function monitorWebProvider(
       const textLimit = resolveTextChunkLimit(cfg, "whatsapp");
       let didLogHeartbeatStrip = false;
       let didSendReply = false;
+      let didSendVoiceReply = false;
       const responsePrefix = resolveEffectiveMessagesConfig(
         cfg,
         route.agentId,
       ).responsePrefix;
+      const dispatchCtx = {
+        Body: combinedBody,
+        RawBody: msg.body,
+        CommandBody: msg.body,
+        From: msg.from,
+        To: msg.to,
+        SessionKey: route.sessionKey,
+        AccountId: route.accountId,
+        MessageSid: msg.id,
+        ReplyToId: msg.replyToId,
+        ReplyToBody: msg.replyToBody,
+        ReplyToSender: msg.replyToSender,
+        MediaPath: msg.mediaPath,
+        MediaUrl: msg.mediaUrl,
+        MediaType: msg.mediaType,
+        ChatType: msg.chatType,
+        GroupSubject: msg.groupSubject,
+        GroupMembers: formatGroupMembers(
+          msg.groupParticipants,
+          groupMemberNames.get(groupHistoryKey),
+          msg.senderE164,
+        ),
+        SenderName: msg.senderName,
+        SenderId: msg.senderJid ?? msg.senderE164,
+        SenderE164: msg.senderE164,
+        WasMentioned: msg.wasMentioned,
+        ...(msg.location ? toLocationContext(msg.location) : {}),
+        Provider: "whatsapp",
+        Surface: "whatsapp",
+        OriginatingChannel: "whatsapp",
+        OriginatingTo: msg.from,
+      } satisfies MsgContext;
       const { queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
-        ctx: {
-          Body: combinedBody,
-          RawBody: msg.body,
-          CommandBody: msg.body,
-          From: msg.from,
-          To: msg.to,
-          SessionKey: route.sessionKey,
-          AccountId: route.accountId,
-          MessageSid: msg.id,
-          ReplyToId: msg.replyToId,
-          ReplyToBody: msg.replyToBody,
-          ReplyToSender: msg.replyToSender,
-          MediaPath: msg.mediaPath,
-          MediaUrl: msg.mediaUrl,
-          MediaType: msg.mediaType,
-          ChatType: msg.chatType,
-          GroupSubject: msg.groupSubject,
-          GroupMembers: formatGroupMembers(
-            msg.groupParticipants,
-            groupMemberNames.get(groupHistoryKey),
-            msg.senderE164,
-          ),
-          SenderName: msg.senderName,
-          SenderId: msg.senderJid ?? msg.senderE164,
-          SenderE164: msg.senderE164,
-          WasMentioned: msg.wasMentioned,
-          ...(msg.location ? toLocationContext(msg.location) : {}),
-          Provider: "whatsapp",
-          Surface: "whatsapp",
-          OriginatingChannel: "whatsapp",
-          OriginatingTo: msg.from,
-        },
+        ctx: dispatchCtx,
         cfg,
         replyResolver,
         dispatcherOptions: {
@@ -1370,24 +1390,55 @@ export async function monitorWebProvider(
             }
           },
           deliver: async (payload, info) => {
+            let replyPayload = payload;
+            let sendTextBeforeMedia = false;
+            const replyText = replyPayload.text?.trim();
+            if (
+              info.kind === "final" &&
+              !didSendVoiceReply &&
+              isAudio(msg.mediaType) &&
+              !replyPayload.mediaUrl &&
+              (replyPayload.mediaUrls?.length ?? 0) === 0 &&
+              replyText &&
+              cfg.audio?.reply?.command?.length
+            ) {
+              const audioReply = await synthesizeReplyAudio({
+                cfg,
+                ctx: dispatchCtx,
+                replyText,
+                runtime: defaultRuntime,
+              });
+              if (audioReply?.mediaUrls?.length) {
+                replyPayload = {
+                  ...replyPayload,
+                  mediaUrls: audioReply.mediaUrls,
+                  mediaUrl: audioReply.mediaUrls[0],
+                  audioAsVoice:
+                    audioReply.audioAsVoice ?? replyPayload.audioAsVoice,
+                };
+                sendTextBeforeMedia = true;
+                didSendVoiceReply = true;
+              }
+            }
             await deliverWebReply({
-              replyResult: payload,
+              replyResult: replyPayload,
               msg,
               maxMediaBytes,
               textLimit,
               replyLogger,
               connectionId,
+              sendTextBeforeMedia,
               // Tool + block updates are noisy; skip their log lines.
               skipLog: info.kind !== "final",
             });
             didSendReply = true;
             if (info.kind === "tool") {
-              rememberSentText(payload.text, {});
+              rememberSentText(replyPayload.text, {});
               return;
             }
             const shouldLog =
-              info.kind === "final" && payload.text ? true : undefined;
-            rememberSentText(payload.text, {
+              info.kind === "final" && replyPayload.text ? true : undefined;
+            rememberSentText(replyPayload.text, {
               combinedBody,
               combinedBodySessionKey: route.sessionKey,
               logVerboseMessage: shouldLog,
@@ -1398,14 +1449,16 @@ export async function monitorWebProvider(
                   ? conversationId
                   : (msg.from ?? "unknown");
               const hasMedia = Boolean(
-                payload.mediaUrl || payload.mediaUrls?.length,
+                replyPayload.mediaUrl || replyPayload.mediaUrls?.length,
               );
               whatsappOutboundLog.info(
                 `Auto-replied to ${fromDisplay}${hasMedia ? " (media)" : ""}`,
               );
               if (shouldLogVerbose()) {
                 const preview =
-                  payload.text != null ? elide(payload.text, 400) : "<media>";
+                  replyPayload.text != null
+                    ? elide(replyPayload.text, 400)
+                    : "<media>";
                 whatsappOutboundLog.debug(
                   `Reply body: ${preview}${hasMedia ? " (media)" : ""}`,
                 );
