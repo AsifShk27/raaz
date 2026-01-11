@@ -459,7 +459,7 @@ export async function runCliAgent(params: {
     .join("\n");
 
   const bootstrapFiles = filterBootstrapFilesForSession(
-    await loadWorkspaceBootstrapFiles(workspaceDir),
+    await loadWorkspaceBootstrapFiles(workspaceDir, { query: params.prompt }),
     params.sessionKey ?? params.sessionId,
   );
   const contextFiles = buildBootstrapContextFiles(bootstrapFiles);
