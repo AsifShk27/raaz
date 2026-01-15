@@ -321,6 +321,9 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
     ctx: ctxPayload,
     cfg,
     dispatcher,
+    // ============ ADDED FOR VOICE REPLY ============
+    runtime,
+    // ===============================================
     replyOptions: {
       ...replyOptions,
       skillFilter: channelConfig?.skills,

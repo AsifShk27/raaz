@@ -350,6 +350,9 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
       ctx: ctxPayload,
       cfg: deps.cfg,
       dispatcher,
+      // ============ ADDED FOR VOICE REPLY ============
+      runtime: deps.runtime,
+      // ===============================================
       replyOptions: {
         disableBlockStreaming:
           typeof deps.blockStreaming === "boolean" ? !deps.blockStreaming : undefined,

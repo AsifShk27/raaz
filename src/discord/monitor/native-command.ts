@@ -8,6 +8,9 @@ import { dispatchReplyWithDispatcher } from "../../auto-reply/reply/provider-dis
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import type { ClawdbotConfig, loadConfig } from "../../config/config.js";
 import { buildPairingReply } from "../../pairing/pairing-messages.js";
+// ============ ADDED FOR VOICE REPLY ============
+import type { RuntimeEnv } from "../../runtime.js";
+// ===============================================
 import {
   readChannelAllowFromStore,
   upsertChannelPairingRequest,
@@ -39,8 +42,11 @@ export function createDiscordNativeCommand(params: {
   accountId: string;
   sessionPrefix: string;
   ephemeralDefault: boolean;
+  // ============ ADDED FOR VOICE REPLY ============
+  runtime?: RuntimeEnv;
+  // ===============================================
 }) {
-  const { command, cfg, discordConfig, accountId, sessionPrefix, ephemeralDefault } = params;
+  const { command, cfg, discordConfig, accountId, sessionPrefix, ephemeralDefault, runtime } = params;
   return new (class extends Command {
     name = command.name;
     description = command.description;
@@ -236,6 +242,9 @@ export function createDiscordNativeCommand(params: {
       await dispatchReplyWithDispatcher({
         ctx: ctxPayload,
         cfg,
+        // ============ ADDED FOR VOICE REPLY ============
+        runtime,
+        // ===============================================
         dispatcherOptions: {
           responsePrefix: resolveEffectiveMessagesConfig(cfg, route.agentId).responsePrefix,
           humanDelay: resolveHumanDelayConfig(cfg, route.agentId),

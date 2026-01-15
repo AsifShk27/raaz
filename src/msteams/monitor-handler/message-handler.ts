@@ -396,6 +396,9 @@ export function createMSTeamsMessageHandler(deps: MSTeamsMessageHandlerDeps) {
         ctx: ctxPayload,
         cfg,
         dispatcher,
+        // ============ ADDED FOR VOICE REPLY ============
+        runtime,
+        // ===============================================
         replyOptions,
       });
 

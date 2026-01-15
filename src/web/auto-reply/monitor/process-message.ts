@@ -14,6 +14,9 @@ import type { loadConfig } from "../../../config/config.js";
 import { logVerbose, shouldLogVerbose } from "../../../globals.js";
 import type { getChildLogger } from "../../../logging.js";
 import type { resolveAgentRoute } from "../../../routing/resolve-route.js";
+// ============ ADDED FOR VOICE REPLY ============
+import type { RuntimeEnv } from "../../../runtime.js";
+// ===============================================
 import { jidToE164, normalizeE164 } from "../../../utils.js";
 import { newConnectionId } from "../../reconnect.js";
 import { formatError } from "../../session.js";
@@ -61,6 +64,9 @@ export async function processMessage(params: {
   maxMediaTextChunkLimit?: number;
   groupHistory?: GroupHistoryEntry[];
   suppressGroupHistoryClear?: boolean;
+  // ============ ADDED FOR VOICE REPLY ============
+  runtime?: RuntimeEnv;
+  // ===============================================
 }) {
   const conversationId = params.msg.conversationId ?? params.msg.from;
   let combinedBody = buildInboundLine({
@@ -217,6 +223,9 @@ export async function processMessage(params: {
     },
     cfg: params.cfg,
     replyResolver: params.replyResolver,
+    // ============ ADDED FOR VOICE REPLY ============
+    runtime: params.runtime,
+    // ===============================================
     dispatcherOptions: {
       responsePrefix,
       responsePrefixContextProvider: () => prefixContext,

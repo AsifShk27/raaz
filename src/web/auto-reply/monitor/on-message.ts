@@ -3,6 +3,9 @@ import type { loadConfig } from "../../../config/config.js";
 import { logVerbose } from "../../../globals.js";
 import { resolveAgentRoute } from "../../../routing/resolve-route.js";
 import { buildGroupHistoryKey } from "../../../routing/session-key.js";
+// ============ ADDED FOR VOICE REPLY ============
+import type { RuntimeEnv } from "../../../runtime.js";
+// ===============================================
 import { normalizeE164 } from "../../../utils.js";
 import type { MentionConfig } from "../mentions.js";
 import type { WebInboundMsg } from "../types.js";
@@ -28,6 +31,9 @@ export function createWebOnMessageHandler(params: {
   replyLogger: ReturnType<(typeof import("../../../logging.js"))["getChildLogger"]>;
   baseMentionConfig: MentionConfig;
   account: { authDir?: string; accountId?: string };
+  // ============ ADDED FOR VOICE REPLY ============
+  runtime?: RuntimeEnv;
+  // ===============================================
 }) {
   const processForRoute = async (
     msg: WebInboundMsg,
@@ -57,6 +63,9 @@ export function createWebOnMessageHandler(params: {
       buildCombinedEchoKey: params.echoTracker.buildCombinedKey,
       groupHistory: opts?.groupHistory,
       suppressGroupHistoryClear: opts?.suppressGroupHistoryClear,
+      // ============ ADDED FOR VOICE REPLY ============
+      runtime: params.runtime,
+      // ===============================================
     });
 
   return async (msg: WebInboundMsg) => {

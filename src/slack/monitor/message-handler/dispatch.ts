@@ -108,6 +108,9 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     ctx: prepared.ctxPayload,
     cfg,
     dispatcher,
+    // ============ ADDED FOR VOICE REPLY ============
+    runtime,
+    // ===============================================
     replyOptions: {
       ...replyOptions,
       skillFilter: prepared.channelConfig?.skills,

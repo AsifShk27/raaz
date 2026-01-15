@@ -167,6 +167,9 @@ export async function monitorWebChannel(
       replyLogger,
       baseMentionConfig,
       account,
+      // ============ ADDED FOR VOICE REPLY ============
+      runtime,
+      // ===============================================
     });
 
     const listener = await (listenerFactory ?? monitorWebInbox)({

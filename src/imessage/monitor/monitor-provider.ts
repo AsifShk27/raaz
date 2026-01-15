@@ -380,6 +380,9 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
       ctx: ctxPayload,
       cfg,
       dispatcher,
+      // ============ ADDED FOR VOICE REPLY ============
+      runtime,
+      // ===============================================
       replyOptions: {
         disableBlockStreaming:
           typeof accountInfo.config.blockStreaming === "boolean"

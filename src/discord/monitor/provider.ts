@@ -125,6 +125,9 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
       accountId: account.accountId,
       sessionPrefix,
       ephemeralDefault,
+      // ============ ADDED FOR VOICE REPLY ============
+      runtime,
+      // ===============================================
     }),
   );
 
