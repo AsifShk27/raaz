@@ -42,5 +42,12 @@ export const BroadcastSchema = z
 export const AudioSchema = z
   .object({
     transcription: TranscribeAudioSchema,
+    reply: z
+      .object({
+        command: z.array(z.string()),
+        timeoutSeconds: z.number().int().positive().optional(),
+        voiceOnly: z.boolean().optional(),
+      })
+      .optional(),
   })
   .optional();
