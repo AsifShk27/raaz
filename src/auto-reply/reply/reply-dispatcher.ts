@@ -1,4 +1,9 @@
-import type { HumanDelayConfig } from "../../config/types.js";
+// MODIFIED FILE: src/auto-reply/reply/reply-dispatcher.ts
+// Changes: Add text accumulation, media tracking, voiceOnly support
+
+import type { ClawdbotConfig, HumanDelayConfig } from "../../config/types.js";
+import { logVerbose } from "../../globals.js";
+import { isAudio } from "../transcription.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { normalizeReplyPayload } from "./normalize-reply.js";
 import type { ResponsePrefixContext } from "./response-prefix-template.js";
@@ -31,6 +36,26 @@ function getHumanDelay(config: HumanDelayConfig | undefined): number {
 /** Sleep for a given number of milliseconds. */
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// ============ ADDED FOR VOICE REPLY ============
+/**
+ * Compute whether to skip text-only delivery for voiceOnly mode.
+ * When the inbound message is audio and voiceOnly is enabled in config,
+ * text replies should be skipped (but still accumulated for voice synthesis).
+ *
+ * @param cfg - The clawdbot config containing audio.reply.voiceOnly setting
+ * @param mediaType - The MediaType of the inbound message (e.g., "audio/ogg")
+ * @returns true if text-only replies should be skipped
+ */
+export function shouldSkipTextOnlyDelivery(
+  cfg: ClawdbotConfig | undefined,
+  mediaType: string | undefined | null,
+): boolean {
+  const inboundIsAudio = isAudio(mediaType);
+  const voiceOnlyEnabled = cfg?.audio?.reply?.voiceOnly === true;
+  return inboundIsAudio && voiceOnlyEnabled;
+}
+// ===============================================
+
 export type ReplyDispatcherOptions = {
   deliver: ReplyDispatchDeliverer;
   responsePrefix?: string;
@@ -44,6 +69,14 @@ export type ReplyDispatcherOptions = {
   onError?: ReplyDispatchErrorHandler;
   /** Human-like delay between block replies for natural rhythm. */
   humanDelay?: HumanDelayConfig;
+  // ============ ADDED FOR VOICE REPLY ============
+  /**
+   * When true, skip delivery of text-only payloads (no media).
+   * Text is still accumulated for voice synthesis.
+   * Used for voice-only mode when inbound is audio.
+   */
+  skipTextOnlyDelivery?: boolean;
+  // ===============================================
 };
 
 export type ReplyDispatcherWithTypingOptions = Omit<ReplyDispatcherOptions, "onIdle"> & {
@@ -63,6 +96,12 @@ export type ReplyDispatcher = {
   sendFinalReply: (payload: ReplyPayload) => boolean;
   waitForIdle: () => Promise<void>;
   getQueuedCounts: () => Record<ReplyDispatchKind, number>;
+  // ============ ADDED FOR VOICE REPLY ============
+  /** Get accumulated text from all dispatched replies (for voice synthesis). */
+  getAccumulatedText: () => string;
+  /** Check if any reply contained media (to skip voice synthesis). */
+  hasDispatchedMedia: () => boolean;
+  // ===============================================
 };
 
 function normalizeReplyPayloadInternal(
@@ -97,10 +136,45 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
     block: 0,
     final: 0,
   };
+  // ============ ADDED FOR VOICE REPLY ============
+  // Track accumulated text from all replies for voice synthesis.
+  let accumulatedText = "";
+  // Track if any reply contained media.
+  let hasMedia = false;
+  // ===============================================
 
   const enqueue = (kind: ReplyDispatchKind, payload: ReplyPayload) => {
     const normalized = normalizeReplyPayloadInternal(payload, options);
     if (!normalized) return false;
+
+    // ============ ADDED FOR VOICE REPLY ============
+    // Accumulate text for voice synthesis (used by dispatch-from-config).
+    // This happens BEFORE checking skipTextOnlyDelivery so voice synthesis has all text.
+    const text = normalized.text?.trim();
+    if (text) {
+      accumulatedText += (accumulatedText ? " " : "") + text;
+    }
+
+    // Check if this payload has media
+    const payloadHasMedia =
+      normalized.mediaUrl || (normalized.mediaUrls?.length ?? 0) > 0;
+
+    // Track if any reply has media (to skip voice synthesis in dispatch-from-config).
+    if (payloadHasMedia) {
+      hasMedia = true;
+    }
+
+    // For voiceOnly mode: skip delivery of text-only payloads but count them.
+    // Text is already accumulated above for voice synthesis.
+    if (options.skipTextOnlyDelivery && !payloadHasMedia) {
+      logVerbose(
+        `voiceOnly: skipping text-only ${kind} delivery (text: ${text?.slice(0, 50)}...)`,
+      );
+      queuedCounts[kind] += 1;
+      return true; // Counted but not delivered
+    }
+    // ===============================================
+
     queuedCounts[kind] += 1;
     pending += 1;
 
@@ -135,6 +209,10 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
     sendFinalReply: (payload) => enqueue("final", payload),
     waitForIdle: () => sendChain,
     getQueuedCounts: () => ({ ...queuedCounts }),
+    // ============ ADDED FOR VOICE REPLY ============
+    getAccumulatedText: () => accumulatedText,
+    hasDispatchedMedia: () => hasMedia,
+    // ===============================================
   };
 }
 

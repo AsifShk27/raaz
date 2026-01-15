@@ -1,3 +1,6 @@
+// MODIFIED FILE: src/config/types.messages.ts
+// Changes: Add reply config to AudioConfig
+
 import type { QueueDropPolicy, QueueMode, QueueModeByProvider } from "./types.queue.js";
 
 export type GroupChatConfig = {
@@ -37,6 +40,37 @@ export type AudioConfig = {
     command: string[];
     timeoutSeconds?: number;
   };
+  // ============ ADDED FOR VOICE REPLY ============
+  /**
+   * Voice reply synthesis configuration.
+   * When configured, the bot will synthesize audio replies for voice messages.
+   */
+  reply?: {
+    /**
+     * CLI command to turn reply text into audio.
+     * Supports template variables:
+     * - {{ReplyText}} - the text to synthesize
+     * - {{ReplyTextFile}} - path to temp file containing the text
+     * - {{ReplyAudioPath}} - suggested output path for audio
+     *
+     * Command should either:
+     * - Print MEDIA:<path> to stdout
+     * - Write audio file to {{ReplyAudioPath}}
+     *
+     * Example: ["sag", "tts", "--text", "{{ReplyText}}", "--output", "{{ReplyAudioPath}}"]
+     */
+    command: string[];
+    /** Timeout for synthesis command in seconds (default: 45). */
+    timeoutSeconds?: number;
+    /**
+     * When true, suppress text replies and only send synthesized voice.
+     * Text is still accumulated internally for voice synthesis.
+     * Only applies when inbound message is audio.
+     * Default: false (send both text and voice).
+     */
+    voiceOnly?: boolean;
+  };
+  // ===============================================
 };
 
 export type MessagesConfig = {

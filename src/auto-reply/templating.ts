@@ -1,3 +1,6 @@
+// MODIFIED FILE: src/auto-reply/templating.ts
+// Changes: Add ReplyText, ReplyTextFile, ReplyAudioPath to TemplateContext
+
 import type { ChannelId } from "../channels/plugins/types.js";
 import type { InternalMessageChannel } from "../utils/message-channel.js";
 
@@ -74,6 +77,14 @@ export type TemplateContext = MsgContext & {
   BodyStripped?: string;
   SessionId?: string;
   IsNewSession?: string;
+  // ============ ADDED FOR VOICE REPLY ============
+  /** The reply text to be synthesized into audio. */
+  ReplyText?: string;
+  /** Path to temp file containing the reply text. */
+  ReplyTextFile?: string;
+  /** Suggested output path for synthesized audio. */
+  ReplyAudioPath?: string;
+  // ===============================================
 };
 
 // Simple {{Placeholder}} interpolation using inbound message context.
