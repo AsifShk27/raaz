@@ -1,4 +1,5 @@
 import type { OpenClawConfig } from "../config/config.js";
+import type { RuntimeEnv } from "../runtime.js";
 import type { DispatchFromConfigResult } from "./reply/dispatch-from-config.js";
 import { dispatchReplyFromConfig } from "./reply/dispatch-from-config.js";
 import { finalizeInboundContext } from "./reply/inbound-context.js";
@@ -38,6 +39,8 @@ export async function dispatchInboundMessage(params: {
   dispatcher: ReplyDispatcher;
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
   replyResolver?: typeof import("./reply.js").getReplyFromConfig;
+  /** Runtime for error logging. */
+  runtime?: RuntimeEnv;
 }): Promise<DispatchInboundResult> {
   const finalized = finalizeInboundContext(params.ctx);
   return await withReplyDispatcher({
@@ -49,6 +52,7 @@ export async function dispatchInboundMessage(params: {
         dispatcher: params.dispatcher,
         replyOptions: params.replyOptions,
         replyResolver: params.replyResolver,
+        runtime: params.runtime,
       }),
   });
 }
@@ -59,6 +63,8 @@ export async function dispatchInboundMessageWithBufferedDispatcher(params: {
   dispatcherOptions: ReplyDispatcherWithTypingOptions;
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
   replyResolver?: typeof import("./reply.js").getReplyFromConfig;
+  /** Runtime for error logging. */
+  runtime?: RuntimeEnv;
 }): Promise<DispatchInboundResult> {
   const { dispatcher, replyOptions, markDispatchIdle } = createReplyDispatcherWithTyping(
     params.dispatcherOptions,
@@ -73,6 +79,7 @@ export async function dispatchInboundMessageWithBufferedDispatcher(params: {
         ...params.replyOptions,
         ...replyOptions,
       },
+      runtime: params.runtime,
     });
   } finally {
     markDispatchIdle();
@@ -85,6 +92,8 @@ export async function dispatchInboundMessageWithDispatcher(params: {
   dispatcherOptions: ReplyDispatcherOptions;
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
   replyResolver?: typeof import("./reply.js").getReplyFromConfig;
+  /** Runtime for error logging. */
+  runtime?: RuntimeEnv;
 }): Promise<DispatchInboundResult> {
   const dispatcher = createReplyDispatcher(params.dispatcherOptions);
   return await dispatchInboundMessage({
@@ -93,5 +102,6 @@ export async function dispatchInboundMessageWithDispatcher(params: {
     dispatcher,
     replyResolver: params.replyResolver,
     replyOptions: params.replyOptions,
+    runtime: params.runtime,
   });
 }
