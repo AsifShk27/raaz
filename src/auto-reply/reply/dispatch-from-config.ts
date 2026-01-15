@@ -9,6 +9,8 @@ import {
   logSessionStateChange,
 } from "../../logging/diagnostic.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
+import type { RuntimeEnv } from "../../runtime.js";
+import { synthesizeReplyAudio } from "../audio-reply.js";
 import { getReplyFromConfig } from "../reply.js";
 import type { FinalizedMsgContext } from "../templating.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
@@ -77,8 +79,10 @@ export async function dispatchReplyFromConfig(params: {
   dispatcher: ReplyDispatcher;
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
   replyResolver?: typeof getReplyFromConfig;
+  /** Runtime for error logging. */
+  runtime?: RuntimeEnv;
 }): Promise<DispatchFromConfigResult> {
-  const { ctx, cfg, dispatcher } = params;
+  const { ctx, cfg, dispatcher, runtime } = params;
   const diagnosticsEnabled = isDiagnosticsEnabled(cfg);
   const channel = String(ctx.Surface ?? ctx.Provider ?? "unknown").toLowerCase();
   const chatId = ctx.To ?? ctx.From;
@@ -328,6 +332,51 @@ export async function dispatchReplyFromConfig(params: {
       }
     }
     await dispatcher.waitForIdle();
+
+    // Generic voice reply synthesis: if inbound was audio and we have accumulated
+    // text without media, synthesize voice and send it.
+    // This makes voice reply work across all providers (WhatsApp, Telegram, etc.).
+    const accumulatedText = dispatcher.getAccumulatedText().trim();
+    const shouldSynthesizeVoice =
+      inboundAudio &&
+      accumulatedText &&
+      !dispatcher.hasDispatchedMedia() &&
+      cfg.audio?.reply?.command?.length;
+
+    if (shouldSynthesizeVoice) {
+      const audioReply = await synthesizeReplyAudio({
+        cfg,
+        ctx,
+        replyText: accumulatedText,
+        runtime,
+      });
+      if (audioReply?.mediaUrls?.length) {
+        const voicePayload: ReplyPayload = {
+          mediaUrls: audioReply.mediaUrls,
+          mediaUrl: audioReply.mediaUrls[0],
+          audioAsVoice: audioReply.audioAsVoice ?? true,
+        };
+        if (shouldRouteToOriginating && originatingChannel && originatingTo) {
+          const result = await routeReply({
+            payload: voicePayload,
+            channel: originatingChannel,
+            to: originatingTo,
+            sessionKey: ctx.SessionKey,
+            accountId: ctx.AccountId,
+            threadId: ctx.MessageThreadId,
+            cfg,
+          });
+          if (result.ok) {
+            queuedFinal = true;
+            routedFinalCount += 1;
+          }
+        } else {
+          queuedFinal = dispatcher.sendFinalReply(voicePayload) || queuedFinal;
+        }
+        await dispatcher.waitForIdle();
+        logVerbose("dispatch-from-config: synthesized voice reply");
+      }
+    }
 
     const counts = dispatcher.getQueuedCounts();
     counts.final += routedFinalCount;

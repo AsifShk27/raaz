@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AgentDefaultsSchema } from "./zod-schema.agent-defaults.js";
 import { AgentEntrySchema } from "./zod-schema.agent-runtime.js";
 import { TranscribeAudioSchema } from "./zod-schema.core.js";
+import { isSafeExecutableValue } from "../infra/exec-safety.js";
 
 export const AgentsSchema = z
   .object({
@@ -48,6 +49,22 @@ export const BroadcastSchema = z
 export const AudioSchema = z
   .object({
     transcription: TranscribeAudioSchema,
+    reply: z
+      .object({
+        command: z.array(z.string()).superRefine((value, ctx) => {
+          const executable = value[0];
+          if (!isSafeExecutableValue(executable)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [0],
+              message: "expected safe executable name or path",
+            });
+          }
+        }),
+        timeoutSeconds: z.number().int().positive().optional(),
+        voiceOnly: z.boolean().optional(),
+      })
+      .optional(),
   })
   .strict()
   .optional();

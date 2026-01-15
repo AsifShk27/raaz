@@ -131,6 +131,12 @@ export type TemplateContext = MsgContext & {
   BodyStripped?: string;
   SessionId?: string;
   IsNewSession?: string;
+  /** The reply text to be synthesized into audio. */
+  ReplyText?: string;
+  /** Path to temp file containing the reply text. */
+  ReplyTextFile?: string;
+  /** Suggested output path for synthesized audio. */
+  ReplyAudioPath?: string;
 };
 
 function formatTemplateValue(value: unknown): string {
