@@ -26,6 +26,7 @@ import { logVerbose, shouldLogVerbose } from "../../../globals.js";
 import type { getChildLogger } from "../../../logging.js";
 import { readChannelAllowFromStore } from "../../../pairing/pairing-store.js";
 import type { resolveAgentRoute } from "../../../routing/resolve-route.js";
+import type { RuntimeEnv } from "../../../runtime.js";
 import { jidToE164, normalizeE164 } from "../../../utils.js";
 import { newConnectionId } from "../../reconnect.js";
 import { formatError } from "../../session.js";
@@ -95,6 +96,7 @@ async function resolveWhatsAppCommandAuthorized(params: {
 
 export async function processMessage(params: {
   cfg: ReturnType<typeof loadConfig>;
+  runtime: RuntimeEnv;
   msg: WebInboundMsg;
   route: ReturnType<typeof resolveAgentRoute>;
   groupHistoryKey: string;
@@ -323,6 +325,7 @@ export async function processMessage(params: {
   const { queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
     cfg: params.cfg,
+    runtime: params.runtime,
     replyResolver: params.replyResolver,
     dispatcherOptions: {
       responsePrefix,

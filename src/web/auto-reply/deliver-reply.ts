@@ -1,14 +1,81 @@
+<<<<<<< HEAD
 import { chunkMarkdownTextWithMode, type ChunkMode } from "../../auto-reply/chunk.js";
 import type { MarkdownTableMode } from "../../config/types.base.js";
 import { convertMarkdownTables } from "../../markdown/tables.js";
+=======
+import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { chunkMarkdownText } from "../../auto-reply/chunk.js";
+>>>>>>> 2a7fff29d (fix(voice): sag replies + opus voice notes; stabilize tool)
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import { logVerbose, shouldLogVerbose } from "../../globals.js";
+import { isVoiceCompatibleAudio } from "../../media/audio.js";
+import { runExec } from "../../process/exec.js";
 import { loadWebMedia } from "../media.js";
 import { newConnectionId } from "../reconnect.js";
 import { formatError } from "../session.js";
 import { whatsappOutboundLog } from "./loggers.js";
 import type { WebInboundMsg } from "./types.js";
 import { elide } from "./util.js";
+
+type VoiceTranscodeResult = {
+  buffer: Buffer;
+  contentType: string;
+  fileName: string;
+};
+
+async function transcodeToOpus(params: {
+  buffer: Buffer;
+  fileName?: string;
+}): Promise<VoiceTranscodeResult | null> {
+  const id = randomUUID();
+  const inputExt = params.fileName ? path.extname(params.fileName) : "";
+  const inputPath = path.join(os.tmpdir(), `clawdbot-voice-in-${id}${inputExt || ".audio"}`);
+  const outputPath = path.join(os.tmpdir(), `clawdbot-voice-out-${id}.ogg`);
+  try {
+    await fs.writeFile(inputPath, params.buffer);
+    await runExec(
+      "ffmpeg",
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        inputPath,
+        "-ac",
+        "1",
+        "-ar",
+        "48000",
+        "-c:a",
+        "libopus",
+        "-b:a",
+        "24k",
+        "-vbr",
+        "on",
+        outputPath,
+      ],
+      { timeoutMs: 30_000, maxBuffer: 5 * 1024 * 1024 },
+    );
+    const buffer = await fs.readFile(outputPath);
+    return {
+      buffer,
+      contentType: "audio/ogg; codecs=opus",
+      fileName: path.basename(outputPath),
+    };
+  } catch (err) {
+    if (shouldLogVerbose()) {
+      logVerbose(`Failed to transcode audio to opus: ${formatError(err)}`);
+    }
+    return null;
+  } finally {
+    await fs.unlink(inputPath).catch(() => {});
+    await fs.unlink(outputPath).catch(() => {});
+  }
+}
 
 export async function deliverWebReply(params: {
   replyResult: ReplyPayload;
@@ -115,12 +182,46 @@ export async function deliverWebReply(params: {
           "media:image",
         );
       } else if (media.kind === "audio") {
+        const wantsVoice = replyResult.audioAsVoice !== false;
+        let audioPayload = media;
+        let useVoice = wantsVoice;
+        if (
+          wantsVoice &&
+          !isVoiceCompatibleAudio({
+            contentType: media.contentType,
+            fileName: media.fileName,
+          })
+        ) {
+          const converted = await transcodeToOpus({
+            buffer: media.buffer,
+            fileName: media.fileName,
+          });
+          if (converted) {
+            audioPayload = {
+              buffer: converted.buffer,
+              contentType: converted.contentType,
+              kind: "audio",
+              fileName: converted.fileName,
+            };
+          } else {
+            useVoice = false;
+            if (shouldLogVerbose()) {
+              logVerbose(
+                "WhatsApp voice note requires OGG/Opus; sending audio as a file instead.",
+              );
+            }
+          }
+        }
+        const voiceMimeType = "audio/ogg; codecs=opus";
+        const mimetype = useVoice
+          ? voiceMimeType
+          : (audioPayload.contentType ?? "application/octet-stream");
         await sendWithRetry(
           () =>
             msg.sendMedia({
-              audio: media.buffer,
-              ptt: true,
-              mimetype: media.contentType,
+              audio: audioPayload.buffer,
+              ptt: useVoice,
+              mimetype,
               caption,
             }),
           "media:audio",

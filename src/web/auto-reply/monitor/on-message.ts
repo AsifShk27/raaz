@@ -2,6 +2,7 @@ import type { MsgContext } from "../../../auto-reply/templating.js";
 import type { getReplyFromConfig } from "../../../auto-reply/reply.js";
 import type { loadConfig } from "../../../config/config.js";
 import { logVerbose } from "../../../globals.js";
+import type { RuntimeEnv } from "../../../runtime.js";
 import { resolveAgentRoute } from "../../../routing/resolve-route.js";
 import { buildGroupHistoryKey } from "../../../routing/session-key.js";
 import { normalizeE164 } from "../../../utils.js";
@@ -17,6 +18,7 @@ import { processMessage } from "./process-message.js";
 
 export function createWebOnMessageHandler(params: {
   cfg: ReturnType<typeof loadConfig>;
+  runtime: RuntimeEnv;
   verbose: boolean;
   connectionId: string;
   maxMediaBytes: number;
@@ -41,6 +43,7 @@ export function createWebOnMessageHandler(params: {
   ) =>
     processMessage({
       cfg: params.cfg,
+      runtime: params.runtime,
       msg,
       route,
       groupHistoryKey,

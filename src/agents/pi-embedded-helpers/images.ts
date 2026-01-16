@@ -21,6 +21,47 @@ export function isEmptyAssistantMessageContent(
   });
 }
 
+<<<<<<< HEAD
+=======
+function isEmptyAssistantErrorMessage(
+  message: Extract<AgentMessage, { role: "assistant" }>,
+): boolean {
+  if (message.stopReason !== "error") return false;
+  return isEmptyAssistantMessageContent(message);
+}
+
+function normalizeToolCallArguments(block: unknown): unknown {
+  if (!block || typeof block !== "object") return block;
+  const record = block as Record<string, unknown>;
+  const type = record.type;
+  if (type !== "toolCall" && type !== "toolUse" && type !== "functionCall") return block;
+
+  const rawArgs = record.arguments !== undefined ? record.arguments : record.input;
+  let normalizedArgs: unknown = rawArgs;
+
+  if (typeof rawArgs === "string") {
+    const trimmed = rawArgs.trim();
+    if (!trimmed) {
+      normalizedArgs = {};
+    } else {
+      try {
+        normalizedArgs = JSON.parse(trimmed);
+      } catch {
+        normalizedArgs = {};
+      }
+    }
+  }
+
+  if (normalizedArgs === undefined || normalizedArgs === null || typeof normalizedArgs !== "object") {
+    normalizedArgs = {};
+  }
+
+  const next: Record<string, unknown> = { ...record, arguments: normalizedArgs };
+  if ("input" in next) delete next.input;
+  return next;
+}
+
+>>>>>>> 2a7fff29d (fix(voice): sag replies + opus voice notes; stabilize tool)
 export async function sanitizeSessionMessagesImages(
   messages: AgentMessage[],
   label: string,
@@ -115,8 +156,31 @@ export async function sanitizeSessionMessagesImages(
           if (rec.type !== "text" || typeof rec.text !== "string") return true;
           return rec.text.trim().length > 0;
         });
+<<<<<<< HEAD
         const finalContent = (await sanitizeContentBlocksImages(
           filteredContent as unknown as ContentBlock[],
+=======
+
+        const normalizedContent = options?.enforceToolCallLast
+          ? (() => {
+              let lastToolIndex = -1;
+              for (let i = filteredContent.length - 1; i >= 0; i -= 1) {
+                const block = filteredContent[i];
+                if (!block || typeof block !== "object") continue;
+                const type = (block as { type?: unknown }).type;
+                if (type === "functionCall" || type === "toolUse" || type === "toolCall") {
+                  lastToolIndex = i;
+                  break;
+                }
+              }
+              if (lastToolIndex === -1) return filteredContent;
+              return filteredContent.slice(0, lastToolIndex + 1);
+            })()
+          : filteredContent;
+        const toolNormalizedContent = normalizedContent.map(normalizeToolCallArguments);
+        const finalContent = (await sanitizeContentBlocksImages(
+          toolNormalizedContent as unknown as ContentBlock[],
+>>>>>>> 2a7fff29d (fix(voice): sag replies + opus voice notes; stabilize tool)
           label,
         )) as unknown as typeof assistantMsg.content;
         if (finalContent.length === 0) {

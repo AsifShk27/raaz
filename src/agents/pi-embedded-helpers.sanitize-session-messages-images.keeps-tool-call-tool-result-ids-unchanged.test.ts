@@ -86,7 +86,48 @@ describe("sanitizeSessionMessagesImages", () => {
     expect(toolResult.role).toBe("toolResult");
     expect(toolResult.toolCallId).toBe("call123fc456");
   });
+<<<<<<< HEAD
   it("does not synthesize tool call input when missing", async () => {
+=======
+  it("drops assistant blocks after a tool call when enforceToolCallLast is enabled", async () => {
+    const input = [
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "before" },
+          { type: "toolCall", id: "call_1", name: "read", arguments: {} },
+          { type: "thinking", thinking: "after", thinkingSignature: "sig" },
+          { type: "text", text: "after text" },
+        ],
+      },
+    ] satisfies AgentMessage[];
+
+    const out = await sanitizeSessionMessagesImages(input, "test", {
+      enforceToolCallLast: true,
+    });
+    const assistant = out[0] as { content?: Array<{ type?: string }> };
+    expect(assistant.content?.map((b) => b.type)).toEqual(["text", "toolCall"]);
+  });
+  it("keeps assistant blocks after a tool call when enforceToolCallLast is disabled", async () => {
+    const input = [
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "before" },
+          { type: "toolCall", id: "call_1", name: "read", arguments: {} },
+          { type: "thinking", thinking: "after", thinkingSignature: "sig" },
+          { type: "text", text: "after text" },
+        ],
+      },
+    ] satisfies AgentMessage[];
+
+    const out = await sanitizeSessionMessagesImages(input, "test");
+    const assistant = out[0] as { content?: Array<{ type?: string }> };
+    expect(assistant.content?.map((b) => b.type)).toEqual(["text", "toolCall", "thinking", "text"]);
+  });
+
+  it("synthesizes empty tool call arguments when missing", async () => {
+>>>>>>> 2a7fff29d (fix(voice): sag replies + opus voice notes; stabilize tool)
     const input = [
       {
         role: "assistant",
@@ -99,6 +140,27 @@ describe("sanitizeSessionMessagesImages", () => {
     const toolCall = assistant.content?.find((b) => b.type === "toolCall");
     expect(toolCall).toBeTruthy();
     expect("input" in (toolCall ?? {})).toBe(false);
-    expect("arguments" in (toolCall ?? {})).toBe(false);
+    expect(toolCall?.arguments).toEqual({});
+  });
+
+  it("parses tool call arguments provided as JSON strings", async () => {
+    const input = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call_1",
+            name: "read",
+            arguments: "{\"path\":\"/tmp/file.txt\"}",
+          },
+        ],
+      },
+    ] satisfies AgentMessage[];
+
+    const out = await sanitizeSessionMessagesImages(input, "test");
+    const assistant = out[0] as { content?: Array<Record<string, unknown>> };
+    const toolCall = assistant.content?.find((b) => b.type === "toolCall");
+    expect(toolCall?.arguments).toEqual({ path: "/tmp/file.txt" });
   });
 });

@@ -422,6 +422,7 @@ export function registerSlackMonitorSlashCommands(params: {
       const { counts } = await dispatchReplyWithDispatcher({
         ctx: ctxPayload,
         cfg,
+        runtime,
         dispatcherOptions: {
           responsePrefix: resolveEffectiveMessagesConfig(cfg, route.agentId).responsePrefix,
           deliver: async (payload) => {
