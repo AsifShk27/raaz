@@ -261,7 +261,7 @@ describe("runEmbeddedPiAgent", () => {
     expect(secondUserIndex).toBeGreaterThan(firstAssistantIndex);
     expect(secondAssistantIndex).toBeGreaterThan(secondUserIndex);
   }, 20_000);
-  it("returns role ordering error when session ends with a user turn", async () => {
+  it("inserts a placeholder assistant turn when session ends with a user turn", async () => {
     const { SessionManager } = await import("@mariozechner/pi-coding-agent");
 
     const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "clawdbot-agent-"));
@@ -317,8 +317,28 @@ describe("runEmbeddedPiAgent", () => {
       agentDir,
     });
 
-    expect(result.meta.error?.kind).toBe("role_ordering");
-    expect(result.meta.error?.message).toMatch(/incorrect role information|roles must alternate/i);
-    expect(result.payloads?.[0]?.text).toContain("Message ordering conflict");
+    expect(result.meta.error).toBeUndefined();
+    const messages = await readSessionMessages(sessionFile);
+    const seedUserIndex = messages.findIndex(
+      (message) => message?.role === "user" && textFromContent(message.content) === "seed user 2",
+    );
+    const placeholderIndex = messages.findIndex(
+      (message, index) =>
+        index > seedUserIndex &&
+        message?.role === "assistant" &&
+        textFromContent(message.content) === "Assistant response unavailable.",
+    );
+    const newUserIndex = messages.findIndex(
+      (message, index) =>
+        index > placeholderIndex &&
+        message?.role === "user" &&
+        textFromContent(message.content) === "hello",
+    );
+    const newAssistantIndex = messages.findIndex(
+      (message, index) => index > newUserIndex && message?.role === "assistant",
+    );
+    expect(placeholderIndex).toBeGreaterThan(seedUserIndex);
+    expect(newUserIndex).toBeGreaterThan(placeholderIndex);
+    expect(newAssistantIndex).toBeGreaterThan(newUserIndex);
   });
 });

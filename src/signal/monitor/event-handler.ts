@@ -183,6 +183,7 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
       ctx: ctxPayload,
       cfg: deps.cfg,
       dispatcher,
+      runtime: deps.runtime,
       replyOptions: {
         disableBlockStreaming:
           typeof deps.blockStreaming === "boolean" ? !deps.blockStreaming : undefined,

@@ -18,6 +18,7 @@ import type { loadConfig } from "../../../config/config.js";
 import { logVerbose, shouldLogVerbose } from "../../../globals.js";
 import type { getChildLogger } from "../../../logging.js";
 import type { resolveAgentRoute } from "../../../routing/resolve-route.js";
+import type { RuntimeEnv } from "../../../runtime.js";
 import { jidToE164, normalizeE164 } from "../../../utils.js";
 import { newConnectionId } from "../../reconnect.js";
 import { formatError } from "../../session.js";
@@ -40,6 +41,7 @@ export type GroupHistoryEntry = {
 
 export async function processMessage(params: {
   cfg: ReturnType<typeof loadConfig>;
+  runtime: RuntimeEnv;
   msg: WebInboundMsg;
   route: ReturnType<typeof resolveAgentRoute>;
   groupHistoryKey: string;
@@ -227,6 +229,7 @@ export async function processMessage(params: {
       OriginatingTo: params.msg.from,
     },
     cfg: params.cfg,
+    runtime: params.runtime,
     replyResolver: params.replyResolver,
     dispatcherOptions: {
       responsePrefix,

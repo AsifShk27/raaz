@@ -128,7 +128,7 @@ describe("sanitizeSessionMessagesImages", () => {
     expect(assistant.content?.map((b) => b.type)).toEqual(["text", "toolCall", "thinking", "text"]);
   });
 
-  it("does not synthesize tool call input when missing", async () => {
+  it("synthesizes empty tool call arguments when missing", async () => {
     const input = [
       {
         role: "assistant",
@@ -141,6 +141,27 @@ describe("sanitizeSessionMessagesImages", () => {
     const toolCall = assistant.content?.find((b) => b.type === "toolCall");
     expect(toolCall).toBeTruthy();
     expect("input" in (toolCall ?? {})).toBe(false);
-    expect("arguments" in (toolCall ?? {})).toBe(false);
+    expect(toolCall?.arguments).toEqual({});
+  });
+
+  it("parses tool call arguments provided as JSON strings", async () => {
+    const input = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call_1",
+            name: "read",
+            arguments: "{\"path\":\"/tmp/file.txt\"}",
+          },
+        ],
+      },
+    ] satisfies AgentMessage[];
+
+    const out = await sanitizeSessionMessagesImages(input, "test");
+    const assistant = out[0] as { content?: Array<Record<string, unknown>> };
+    const toolCall = assistant.content?.find((b) => b.type === "toolCall");
+    expect(toolCall?.arguments).toEqual({ path: "/tmp/file.txt" });
   });
 });

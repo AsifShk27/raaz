@@ -3,7 +3,7 @@
 
 import type { ClawdbotConfig } from "../../config/config.js";
 import { logVerbose } from "../../globals.js";
-import type { RuntimeEnv } from "../../runtime.js";
+import { defaultRuntime, type RuntimeEnv } from "../../runtime.js";
 import { synthesizeReplyAudio } from "../audio-reply.js";
 import { getReplyFromConfig } from "../reply.js";
 import type { MsgContext } from "../templating.js";
@@ -31,6 +31,7 @@ export async function dispatchReplyFromConfig(params: {
   // ===============================================
 }): Promise<DispatchFromConfigResult> {
   const { ctx, cfg, dispatcher, runtime } = params;
+  const resolvedRuntime = runtime ?? defaultRuntime;
 
   if (shouldSkipDuplicateInbound(ctx)) {
     return { queuedFinal: false, counts: dispatcher.getQueuedCounts() };
@@ -170,7 +171,6 @@ export async function dispatchReplyFromConfig(params: {
   // This makes voice reply work across all providers (WhatsApp, Telegram, etc.).
   const accumulatedText = dispatcher.getAccumulatedText().trim();
   const shouldSynthesizeVoice =
-    runtime &&
     isAudio(ctx.MediaType) &&
     accumulatedText &&
     !dispatcher.hasDispatchedMedia() &&
@@ -181,7 +181,7 @@ export async function dispatchReplyFromConfig(params: {
       cfg,
       ctx,
       replyText: accumulatedText,
-      runtime,
+      runtime: resolvedRuntime,
     });
     if (audioReply?.mediaUrls?.length) {
       const voicePayload: ReplyPayload = {

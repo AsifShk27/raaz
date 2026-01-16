@@ -426,7 +426,7 @@ export async function runEmbeddedAttempt(
         const promptStartedAt = Date.now();
         log.debug(`embedded run prompt start: runId=${params.runId} sessionId=${params.sessionId}`);
 
-        // Check if last message is a user message to prevent consecutive user turns
+        // Check if last message is a user message to prevent consecutive user turns.
         const lastMsg = activeSession.messages[activeSession.messages.length - 1];
         const lastMsgRole =
           lastMsg && typeof lastMsg === "object" ? (lastMsg as { role?: unknown }).role : undefined;
@@ -437,24 +437,46 @@ export async function runEmbeddedAttempt(
           // This can happen when:
           // 1. A previous heartbeat didn't get a response
           // 2. A user message errored before getting an assistant response
-          // Skip this prompt to prevent "400 Incorrect role information" error.
+          // Insert a placeholder assistant turn so we can continue safely.
+          const placeholder: AssistantMessage = {
+            role: "assistant",
+            content: [{ type: "text", text: "Assistant response unavailable." }],
+            stopReason: "error",
+            errorMessage: "Inserted placeholder to preserve role ordering.",
+            api: params.model.api,
+            provider: params.model.provider,
+            model: params.model.id,
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
+            },
+            timestamp: Date.now(),
+          };
+          activeSession.agent.replaceMessages([...activeSession.messages, placeholder]);
           log.warn(
-            `Skipping prompt because last message is a user message (would create consecutive user turns). ` +
+            `Inserted placeholder assistant turn to preserve role ordering. ` +
               `runId=${params.runId} sessionId=${params.sessionId}`,
           );
-          promptError = new Error(
-            "Incorrect role information: consecutive user messages would violate role ordering",
+        }
+
+        try {
+          await activeSession.prompt(params.prompt, { images: params.images });
+        } catch (err) {
+          promptError = err;
+        } finally {
+          log.debug(
+            `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${Date.now() - promptStartedAt}`,
           );
-        } else {
-          try {
-            await activeSession.prompt(params.prompt, { images: params.images });
-          } catch (err) {
-            promptError = err;
-          } finally {
-            log.debug(
-              `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${Date.now() - promptStartedAt}`,
-            );
-          }
         }
 
         try {

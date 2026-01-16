@@ -453,6 +453,7 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
         ctx: ctxPayload,
         cfg,
         dispatcher,
+        runtime,
         replyOptions: {
           ...replyOptions,
           skillFilter: roomConfigInfo.config?.skills,

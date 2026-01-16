@@ -157,6 +157,7 @@ export async function monitorWebChannel(
     const backgroundTasks = new Set<Promise<unknown>>();
     const onMessage = createWebOnMessageHandler({
       cfg,
+      runtime,
       verbose,
       connectionId,
       maxMediaBytes,

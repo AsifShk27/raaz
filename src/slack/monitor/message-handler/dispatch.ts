@@ -108,6 +108,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     ctx: prepared.ctxPayload,
     cfg,
     dispatcher,
+    runtime,
     replyOptions: {
       ...replyOptions,
       skillFilter: prepared.channelConfig?.skills,
