@@ -296,6 +296,7 @@ export const dispatchTelegramMessage = async ({
     ({ queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
       ctx: ctxPayload,
       cfg,
+      runtime,
       dispatcherOptions: {
         ...prefixOptions,
         deliver: async (payload, info) => {

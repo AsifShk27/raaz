@@ -528,6 +528,7 @@ export function createMSTeamsMessageHandler(deps: MSTeamsMessageHandlerDeps) {
         ctx: ctxPayload,
         cfg,
         dispatcher,
+        runtime,
         replyOptions,
       });
 

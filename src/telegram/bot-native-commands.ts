@@ -612,6 +612,7 @@ export const registerTelegramNativeCommands = ({
           await dispatchReplyWithBufferedBlockDispatcher({
             ctx: ctxPayload,
             cfg,
+            runtime,
             dispatcherOptions: {
               ...prefixOptions,
               deliver: async (payload, _info) => {

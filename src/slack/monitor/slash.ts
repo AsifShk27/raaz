@@ -633,6 +633,7 @@ export async function registerSlackMonitorSlashCommands(params: {
       const { counts } = await dispatchReplyWithDispatcher({
         ctx: ctxPayload,
         cfg,
+        runtime,
         dispatcherOptions: {
           ...prefixOptions,
           deliver: async (payload) => deliverSlashPayloads([payload]),

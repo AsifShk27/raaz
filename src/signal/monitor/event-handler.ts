@@ -244,6 +244,7 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
       ctx: ctxPayload,
       cfg: deps.cfg,
       dispatcher,
+      runtime: deps.runtime,
       replyOptions: {
         ...replyOptions,
         disableBlockStreaming:
