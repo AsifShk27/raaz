@@ -8,12 +8,8 @@ import {
   logMessageQueued,
   logSessionStateChange,
 } from "../../logging/diagnostic.js";
-<<<<<<< HEAD
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import type { RuntimeEnv } from "../../runtime.js";
-=======
-import { defaultRuntime, type RuntimeEnv } from "../../runtime.js";
->>>>>>> 2a7fff29d (fix(voice): sag replies + opus voice notes; stabilize tool)
 import { synthesizeReplyAudio } from "../audio-reply.js";
 import { getReplyFromConfig } from "../reply.js";
 import type { FinalizedMsgContext } from "../templating.js";
@@ -87,8 +83,6 @@ export async function dispatchReplyFromConfig(params: {
   runtime?: RuntimeEnv;
 }): Promise<DispatchFromConfigResult> {
   const { ctx, cfg, dispatcher, runtime } = params;
-  // Use defaultRuntime as fallback so voice synthesis works even without explicit runtime
-  const resolvedRuntime = runtime ?? defaultRuntime;
 
   const diagnosticsEnabled = isDiagnosticsEnabled(cfg);
   const channel = String(ctx.Surface ?? ctx.Provider ?? "unknown").toLowerCase();
@@ -345,11 +339,7 @@ export async function dispatchReplyFromConfig(params: {
     // This makes voice reply work across all providers (WhatsApp, Telegram, etc.).
     const accumulatedText = dispatcher.getAccumulatedText().trim();
     const shouldSynthesizeVoice =
-<<<<<<< HEAD
       inboundAudio &&
-=======
-      isAudio(ctx.MediaType) &&
->>>>>>> 2a7fff29d (fix(voice): sag replies + opus voice notes; stabilize tool)
       accumulatedText &&
       !dispatcher.hasDispatchedMedia() &&
       cfg.audio?.reply?.command?.length;
@@ -359,7 +349,7 @@ export async function dispatchReplyFromConfig(params: {
         cfg,
         ctx,
         replyText: accumulatedText,
-        runtime: resolvedRuntime,
+        runtime,
       });
       if (audioReply?.mediaUrls?.length) {
         const voicePayload: ReplyPayload = {

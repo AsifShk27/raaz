@@ -1,15 +1,11 @@
-<<<<<<< HEAD
-import { chunkMarkdownTextWithMode, type ChunkMode } from "../../auto-reply/chunk.js";
-import type { MarkdownTableMode } from "../../config/types.base.js";
-import { convertMarkdownTables } from "../../markdown/tables.js";
-=======
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { chunkMarkdownText } from "../../auto-reply/chunk.js";
->>>>>>> 2a7fff29d (fix(voice): sag replies + opus voice notes; stabilize tool)
+import { chunkMarkdownTextWithMode, type ChunkMode } from "../../auto-reply/chunk.js";
+import type { MarkdownTableMode } from "../../config/types.base.js";
+import { convertMarkdownTables } from "../../markdown/tables.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import { logVerbose, shouldLogVerbose } from "../../globals.js";
 import { isVoiceCompatibleAudio } from "../../media/audio.js";

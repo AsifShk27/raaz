@@ -1,5 +1,6 @@
 import type { ClawdbotConfig, HumanDelayConfig } from "../../config/types.js";
 import { logVerbose } from "../../globals.js";
+import { kindFromMime } from "../../media/mime.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { normalizeReplyPayload } from "./normalize-reply.js";
 import type { ResponsePrefixContext } from "./response-prefix-template.js";
@@ -32,9 +33,6 @@ function getHumanDelay(config: HumanDelayConfig | undefined): number {
 /** Sleep for a given number of milliseconds. */
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const isAudioMediaType = (mediaType: string | undefined | null): boolean =>
-  Boolean(mediaType?.toLowerCase().startsWith("audio"));
-
 /**
  * Compute whether to skip text-only delivery for voiceOnly mode.
  * When the inbound message is audio and voiceOnly is enabled in config,
@@ -48,7 +46,7 @@ export function shouldSkipTextOnlyDelivery(
   cfg: ClawdbotConfig | undefined,
   mediaType: string | undefined | null,
 ): boolean {
-  const inboundIsAudio = isAudioMediaType(mediaType);
+  const inboundIsAudio = kindFromMime(mediaType) === "audio";
   const voiceOnlyEnabled = cfg?.audio?.reply?.voiceOnly === true;
   return inboundIsAudio && voiceOnlyEnabled;
 }

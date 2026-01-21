@@ -86,9 +86,6 @@ describe("sanitizeSessionMessagesImages", () => {
     expect(toolResult.role).toBe("toolResult");
     expect(toolResult.toolCallId).toBe("call123fc456");
   });
-<<<<<<< HEAD
-  it("does not synthesize tool call input when missing", async () => {
-=======
   it("drops assistant blocks after a tool call when enforceToolCallLast is enabled", async () => {
     const input = [
       {
@@ -127,7 +124,6 @@ describe("sanitizeSessionMessagesImages", () => {
   });
 
   it("synthesizes empty tool call arguments when missing", async () => {
->>>>>>> 2a7fff29d (fix(voice): sag replies + opus voice notes; stabilize tool)
     const input = [
       {
         role: "assistant",
