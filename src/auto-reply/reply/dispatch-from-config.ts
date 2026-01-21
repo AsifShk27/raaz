@@ -10,7 +10,7 @@ import {
   logSessionStateChange,
 } from "../../logging/diagnostic.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
-import { defaultRuntime, type RuntimeEnv } from "../../runtime.js";
+import type { RuntimeEnv } from "../../runtime.js";
 import { maybeApplyTtsToPayload, normalizeTtsAutoMode, resolveTtsConfig } from "../../tts/tts.js";
 import { synthesizeReplyAudio } from "../audio-reply.js";
 import { getReplyFromConfig } from "../reply.js";
@@ -92,8 +92,6 @@ export async function dispatchReplyFromConfig(params: {
   runtime?: RuntimeEnv;
 }): Promise<DispatchFromConfigResult> {
   const { ctx, cfg, dispatcher, runtime } = params;
-  // Use defaultRuntime as fallback so voice synthesis works even without explicit runtime.
-  const resolvedRuntime = runtime ?? defaultRuntime;
   const diagnosticsEnabled = isDiagnosticsEnabled(cfg);
   const channel = String(ctx.Surface ?? ctx.Provider ?? "unknown").toLowerCase();
   const chatId = ctx.To ?? ctx.From;
@@ -509,7 +507,7 @@ export async function dispatchReplyFromConfig(params: {
         cfg,
         ctx,
         replyText: accumulatedText,
-        runtime: resolvedRuntime,
+        runtime,
       });
       if (audioReply?.mediaUrls?.length) {
         const voicePayload: ReplyPayload = {

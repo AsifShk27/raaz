@@ -29,8 +29,6 @@ export function isEmptyAssistantMessageContent(
   });
 }
 
-<<<<<<< HEAD
-=======
 function isEmptyAssistantErrorMessage(
   message: Extract<AgentMessage, { role: "assistant" }>,
 ): boolean {
@@ -68,8 +66,6 @@ function normalizeToolCallArguments(block: unknown): unknown {
   if ("input" in next) delete next.input;
   return next;
 }
-
->>>>>>> 2a7fff29d (fix(voice): sag replies + opus voice notes; stabilize tool)
 export async function sanitizeSessionMessagesImages(
   messages: AgentMessage[],
   label: string,
@@ -82,6 +78,7 @@ export async function sanitizeSessionMessagesImages(
      * - "strict9" (alphanumeric only, length 9)
      */
     toolCallIdMode?: ToolCallIdMode;
+    enforceToolCallLast?: boolean;
     preserveSignatures?: boolean;
     sanitizeThoughtSignatures?: {
       allowBase64Only?: boolean;
@@ -177,10 +174,6 @@ export async function sanitizeSessionMessagesImages(
           return rec.text.trim().length > 0;
         });
 <<<<<<< HEAD
-        const finalContent = (await sanitizeContentBlocksImages(
-          filteredContent as unknown as ContentBlock[],
-=======
-
         const normalizedContent = options?.enforceToolCallLast
           ? (() => {
               let lastToolIndex = -1;
@@ -200,7 +193,6 @@ export async function sanitizeSessionMessagesImages(
         const toolNormalizedContent = normalizedContent.map(normalizeToolCallArguments);
         const finalContent = (await sanitizeContentBlocksImages(
           toolNormalizedContent as unknown as ContentBlock[],
->>>>>>> 2a7fff29d (fix(voice): sag replies + opus voice notes; stabilize tool)
           label,
           imageSanitization,
         )) as unknown as typeof assistantMsg.content;

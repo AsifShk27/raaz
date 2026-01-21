@@ -1,5 +1,6 @@
 import { logVerbose } from "../../globals.js";
 import type { HumanDelayConfig, OpenClawConfig } from "../../config/types.js";
+import { kindFromMime } from "../../media/mime.js";
 import { sleep } from "../../utils.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { registerDispatcher } from "./dispatcher-registry.js";
@@ -40,9 +41,6 @@ function getHumanDelay(config: HumanDelayConfig | undefined): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-const isAudioMediaType = (mediaType: string | undefined | null): boolean =>
-  Boolean(mediaType?.toLowerCase().startsWith("audio"));
-
 /**
  * Compute whether to skip text-only delivery for voiceOnly mode.
  * When the inbound message is audio and voiceOnly is enabled in config,
@@ -56,7 +54,7 @@ export function shouldSkipTextOnlyDelivery(
   cfg: OpenClawConfig | undefined,
   mediaType: string | undefined | null,
 ): boolean {
-  const inboundIsAudio = isAudioMediaType(mediaType);
+  const inboundIsAudio = kindFromMime(mediaType) === "audio";
   const voiceOnlyEnabled = cfg?.audio?.reply?.voiceOnly === true;
   return inboundIsAudio && voiceOnlyEnabled;
 }
