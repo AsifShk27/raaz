@@ -173,7 +173,6 @@ export async function sanitizeSessionMessagesImages(
           }
           return rec.text.trim().length > 0;
         });
-<<<<<<< HEAD
         const normalizedContent = options?.enforceToolCallLast
           ? (() => {
               let lastToolIndex = -1;

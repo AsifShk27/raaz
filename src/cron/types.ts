@@ -59,6 +59,8 @@ export type CronPayload =
       /** Optional model override (provider/model or alias). */
       model?: string;
       thinking?: string;
+      /** Verbose level for tool notifications. Default: "off" for isolated cron jobs. */
+      verbose?: "off" | "on" | "full";
       timeoutSeconds?: number;
       allowUnsafeExternalContent?: boolean;
       deliver?: boolean;
@@ -74,6 +76,7 @@ export type CronPayloadPatch =
       message?: string;
       model?: string;
       thinking?: string;
+      verbose?: "off" | "on" | "full";
       timeoutSeconds?: number;
       allowUnsafeExternalContent?: boolean;
       deliver?: boolean;
