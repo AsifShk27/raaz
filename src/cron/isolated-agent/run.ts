@@ -273,8 +273,13 @@ export async function runCronIsolatedAgentTurn(params: {
   let fallbackModel = model;
   try {
     const sessionFile = resolveSessionTranscriptPath(cronSession.sessionEntry.sessionId, agentId);
+    // For isolated cron jobs, default to "off" to avoid sending tool notifications to messaging channels.
+    // The job payload can explicitly override this, or the agent's verboseDefault config is respected.
+    // We skip cronSession.sessionEntry.verboseLevel to avoid inheriting from interactive sessions.
+    const jobVerboseOverride =
+      params.job.payload.kind === "agentTurn" ? params.job.payload.verbose : undefined;
     const resolvedVerboseLevel =
-      normalizeVerboseLevel(cronSession.sessionEntry.verboseLevel) ??
+      normalizeVerboseLevel(jobVerboseOverride) ??
       normalizeVerboseLevel(agentCfg?.verboseDefault) ??
       "off";
     registerAgentRunContext(cronSession.sessionEntry.sessionId, {

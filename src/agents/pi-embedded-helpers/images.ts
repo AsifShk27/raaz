@@ -153,7 +153,6 @@ export async function sanitizeSessionMessagesImages(
           if (rec.type !== "text" || typeof rec.text !== "string") return true;
           return rec.text.trim().length > 0;
         });
-<<<<<<< HEAD
         const normalizedContent = options?.enforceToolCallLast
           ? (() => {
               let lastToolIndex = -1;

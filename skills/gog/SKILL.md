@@ -1,17 +1,17 @@
 ---
 name: gog
-description: Google Workspace CLI for Gmail, Calendar, Drive, Contacts, Sheets, and Docs.
+description: Google Workspace CLI for Gmail, Calendar, Classroom, Chat, Drive, Contacts, Tasks, Sheets, Docs, and Slides.
 homepage: https://gogcli.sh
 metadata: {"clawdbot":{"emoji":"🎮","requires":{"bins":["gog"]},"install":[{"id":"brew","kind":"brew","formula":"steipete/tap/gogcli","bins":["gog"],"label":"Install gog (brew)"}]}}
 ---
 
 # gog
 
-Use `gog` for Gmail/Calendar/Drive/Contacts/Sheets/Docs. Requires OAuth setup.
+Use `gog` for Gmail/Calendar/Classroom/Chat/Drive/Contacts/Tasks/Sheets/Docs/Slides. Requires OAuth setup.
 
 Setup (once)
 - `gog auth credentials /path/to/client_secret.json`
-- `gog auth add you@gmail.com --services gmail,calendar,drive,contacts,docs,sheets`
+- `gog auth add you@gmail.com --services gmail,calendar,classroom,chat,drive,contacts,tasks,sheets,docs,slides`
 - `gog auth list`
 
 Common commands
@@ -38,6 +38,27 @@ Common commands
 - Sheets metadata: `gog sheets metadata <sheetId> --json`
 - Docs export: `gog docs export <docId> --format txt --out /tmp/doc.txt`
 - Docs cat: `gog docs cat <docId>`
+- Tasks lists: `gog tasks lists list`
+- Tasks list: `gog tasks list <tasklistId>`
+- Tasks add: `gog tasks add <tasklistId> --title "Task name" --due <iso>`
+- Tasks done: `gog tasks done <tasklistId> <taskId>`
+
+Google Classroom
+- List courses: `gog classroom courses list`
+- Get course details: `gog classroom courses get <courseId>`
+- Course roster: `gog classroom roster <courseId>`
+- List assignments: `gog classroom coursework list <courseId>`
+- Get assignment: `gog classroom coursework get <courseId> <workId>`
+- Create assignment: `gog classroom coursework create <courseId> --title "Homework" --description "..." --due <iso>`
+- List submissions: `gog classroom submissions list <courseId> <workId>`
+- Grade submission: `gog classroom submissions grade <courseId> <workId> <submissionId> --draft-grade 95`
+- Return submission: `gog classroom submissions return <courseId> <workId> <submissionId>`
+- List announcements: `gog classroom announcements list <courseId>`
+- Create announcement: `gog classroom announcements create <courseId> --text "Class canceled tomorrow"`
+- List students: `gog classroom students list <courseId>`
+- List teachers: `gog classroom teachers list <courseId>`
+- Invite student: `gog classroom invitations create <courseId> --email student@school.edu --role STUDENT`
+- List topics: `gog classroom topics list <courseId>`
 
 Calendar Colors
 - Use `gog calendar colors` to see all available event colors (IDs 1-11)
