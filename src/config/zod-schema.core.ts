@@ -257,6 +257,89 @@ export const TranscribeAudioSchema = z
   .strict()
   .optional();
 
+/**
+ * TTS Reply Provider - controls which TTS engine to use for voice replies.
+ * - "command": Custom CLI command (Piper, Pocket TTS, sherpa-onnx-tts, etc.)
+ * - "elevenlabs": ElevenLabs API (uses talk.apiKey as fallback)
+ * - "sag": sag CLI wrapper for ElevenLabs
+ */
+export const TtsReplyProviderSchema = z.enum(["command", "elevenlabs", "sag"]);
+
+/**
+ * TTS Reply Schema - configures automatic text-to-speech for voice message replies.
+ *
+ * Placeholders supported in command arrays:
+ * - {{ReplyTextFile}}: Path to temp file containing reply text
+ * - {{ReplyAudioPath}}: Output path for generated audio (OGG/Opus)
+ * - {{ReplyText}}: The actual reply text (for inline usage)
+ *
+ * Example configurations:
+ *
+ * Pocket TTS (local, high quality):
+ *   provider: "command"
+ *   command: ["voice-note-pocket-tts", "--text-file", "{{ReplyTextFile}}", "--out", "{{ReplyAudioPath}}"]
+ *
+ * Piper (local, fast):
+ *   provider: "command"
+ *   command: ["piper", "--model", "/path/to/model.onnx", "-f", "{{ReplyAudioPath}}"]
+ *
+ * ElevenLabs via sag:
+ *   provider: "sag"
+ *   sag:
+ *     voice: "Clawd"
+ *
+ * ElevenLabs direct:
+ *   provider: "elevenlabs"
+ *   elevenlabs:
+ *     voiceId: "abc123"
+ */
+export const TtsReplySchema = z
+  .object({
+    /** Enable automatic TTS for voice replies */
+    enabled: z.boolean().optional(),
+    /** TTS provider to use */
+    provider: TtsReplyProviderSchema.optional(),
+    /** CLI command for provider: "command". Supports {{ReplyTextFile}}, {{ReplyAudioPath}}, {{ReplyText}} placeholders. */
+    command: z
+      .array(z.string())
+      .superRefine((value, ctx) => {
+        const executable = value[0];
+        if (!isSafeExecutableValue(executable)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [0],
+            message: "expected safe executable name or path",
+          });
+        }
+      })
+      .optional(),
+    /** ElevenLabs settings for provider: "elevenlabs" */
+    elevenlabs: z
+      .object({
+        voiceId: z.string().optional(),
+        apiKey: z.string().optional(),
+        modelId: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    /** sag CLI settings for provider: "sag" */
+    sag: z
+      .object({
+        voice: z.string().optional(),
+        model: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    /** Only generate voice reply when inbound message was a voice note */
+    triggerOnVoice: z.boolean().optional(),
+    /** Send voice reply without text (voice only) */
+    voiceOnly: z.boolean().optional(),
+    /** Timeout for TTS generation in seconds */
+    timeoutSeconds: z.number().int().positive().optional(),
+  })
+  .strict()
+  .optional();
+
 export const HexColorSchema = z.string().regex(/^#?[0-9a-fA-F]{6}$/, "expected hex color (RRGGBB)");
 
 export const ExecutableTokenSchema = z

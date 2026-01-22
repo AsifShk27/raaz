@@ -13,6 +13,7 @@ import { ApplicationCommandOptionType, ButtonStyle } from "discord-api-types/v10
 
 import { resolveEffectiveMessagesConfig, resolveHumanDelayConfig } from "../../agents/identity.js";
 import { resolveTextChunkLimit } from "../../auto-reply/chunk.js";
+import { defaultRuntime } from "../../runtime.js";
 import {
   buildCommandTextFromArgs,
   findCommandByNativeName,
@@ -754,6 +755,7 @@ async function dispatchDiscordCommandInteraction(params: {
   await dispatchReplyWithDispatcher({
     ctx: ctxPayload,
     cfg,
+    runtime: defaultRuntime,
     dispatcherOptions: {
       responsePrefix: resolveEffectiveMessagesConfig(cfg, route.agentId).responsePrefix,
       humanDelay: resolveHumanDelayConfig(cfg, route.agentId),

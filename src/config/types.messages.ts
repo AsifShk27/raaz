@@ -39,6 +39,34 @@ export type BroadcastConfig = {
   [peerId: string]: string[] | BroadcastStrategy | undefined;
 };
 
+export type TtsReplyProvider = "command" | "elevenlabs" | "sag";
+
+export type TtsReplyConfig = {
+  /** Enable automatic TTS for voice replies */
+  enabled?: boolean;
+  /** TTS provider to use */
+  provider?: TtsReplyProvider;
+  /** CLI command for provider: "command". Supports {{ReplyTextFile}}, {{ReplyAudioPath}}, {{ReplyText}} placeholders. */
+  command?: string[];
+  /** ElevenLabs settings for provider: "elevenlabs" */
+  elevenlabs?: {
+    voiceId?: string;
+    apiKey?: string;
+    modelId?: string;
+  };
+  /** sag CLI settings for provider: "sag" */
+  sag?: {
+    voice?: string;
+    model?: string;
+  };
+  /** Only generate voice reply when inbound message was a voice note */
+  triggerOnVoice?: boolean;
+  /** Send voice reply without text (voice only) */
+  voiceOnly?: boolean;
+  /** Timeout for TTS generation in seconds */
+  timeoutSeconds?: number;
+};
+
 export type AudioConfig = {
   /** @deprecated Use tools.media.audio.models instead. */
   transcription?: {
@@ -46,6 +74,8 @@ export type AudioConfig = {
     command: string[];
     timeoutSeconds?: number;
   };
+  /** Text-to-speech configuration for generating voice message replies */
+  reply?: TtsReplyConfig;
 };
 
 export type MessagesConfig = {

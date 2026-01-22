@@ -127,6 +127,7 @@ export const dispatchTelegramMessage = async ({
   const { queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
     cfg,
+    runtime,
     dispatcherOptions: {
       responsePrefix: resolveEffectiveMessagesConfig(cfg, route.agentId).responsePrefix,
       responsePrefixContextProvider: () => prefixContext,

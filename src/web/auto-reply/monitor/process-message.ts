@@ -8,6 +8,7 @@ import {
   type ResponsePrefixContext,
 } from "../../../auto-reply/reply/response-prefix-template.js";
 import { resolveTextChunkLimit } from "../../../auto-reply/chunk.js";
+import { defaultRuntime } from "../../../runtime.js";
 import {
   formatInboundEnvelope,
   resolveEnvelopeFormatOptions,
@@ -326,6 +327,7 @@ export async function processMessage(params: {
     ctx: ctxPayload,
     cfg: params.cfg,
     replyResolver: params.replyResolver,
+    runtime: defaultRuntime,
     dispatcherOptions: {
       responsePrefix,
       responsePrefixContextProvider: () => prefixContext,

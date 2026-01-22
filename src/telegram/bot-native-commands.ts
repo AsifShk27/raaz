@@ -315,6 +315,7 @@ export const registerTelegramNativeCommands = ({
           await dispatchReplyWithBufferedBlockDispatcher({
             ctx: ctxPayload,
             cfg,
+            runtime,
             dispatcherOptions: {
               responsePrefix: resolveEffectiveMessagesConfig(cfg, route.agentId).responsePrefix,
               deliver: async (payload) => {

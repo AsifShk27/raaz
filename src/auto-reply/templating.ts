@@ -126,6 +126,12 @@ export type TemplateContext = MsgContext & {
   BodyStripped?: string;
   SessionId?: string;
   IsNewSession?: string;
+  /** Reply text for TTS synthesis */
+  ReplyText?: string;
+  /** Path to temp file containing reply text for TTS */
+  ReplyTextFile?: string;
+  /** Suggested output path for TTS audio */
+  ReplyAudioPath?: string;
 };
 
 function formatTemplateValue(value: unknown): string {

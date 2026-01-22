@@ -13,6 +13,7 @@ import { dispatchReplyWithDispatcher } from "../../auto-reply/reply/provider-dis
 import { finalizeInboundContext } from "../../auto-reply/reply/inbound-context.js";
 import { resolveNativeCommandsEnabled, resolveNativeSkillsEnabled } from "../../config/commands.js";
 import { danger, logVerbose } from "../../globals.js";
+import { defaultRuntime } from "../../runtime.js";
 import { buildPairingReply } from "../../pairing/pairing-messages.js";
 import {
   readChannelAllowFromStore,
@@ -416,6 +417,7 @@ export function registerSlackMonitorSlashCommands(params: {
       const { counts } = await dispatchReplyWithDispatcher({
         ctx: ctxPayload,
         cfg,
+        runtime,
         dispatcherOptions: {
           responsePrefix: resolveEffectiveMessagesConfig(cfg, route.agentId).responsePrefix,
           deliver: async (payload) => {
