@@ -1,6 +1,6 @@
 import type { OpenClawConfig } from "../../config/config.js";
 import type { FinalizedMsgContext } from "../templating.js";
-import type { GetReplyOptions, ReplyPayload } from "../types.js";
+import type { GetReplyOptions, ReplyDeferredInfo, ReplyPayload } from "../types.js";
 import type { ReplyDispatcher, ReplyDispatchKind } from "./reply-dispatcher.js";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { loadSessionStore, resolveStorePath } from "../../config/sessions.js";
@@ -12,7 +12,9 @@ import {
   logSessionStateChange,
 } from "../../logging/diagnostic.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
+import { defaultRuntime, type RuntimeEnv } from "../../runtime.js";
 import { maybeApplyTtsToPayload, normalizeTtsAutoMode, resolveTtsConfig } from "../../tts/tts.js";
+import { synthesizeReplyAudio } from "../audio-reply.js";
 import { getReplyFromConfig } from "../reply.js";
 import { formatAbortReplyText, tryFastAbortFromMessage } from "./abort.js";
 import { shouldSkipDuplicateInbound } from "./inbound-dedupe.js";
@@ -77,6 +79,7 @@ const resolveSessionTtsAuto = (
 export type DispatchFromConfigResult = {
   queuedFinal: boolean;
   counts: Record<ReplyDispatchKind, number>;
+  deferred?: ReplyDeferredInfo;
 };
 
 export async function dispatchReplyFromConfig(params: {
@@ -85,8 +88,12 @@ export async function dispatchReplyFromConfig(params: {
   dispatcher: ReplyDispatcher;
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
   replyResolver?: typeof getReplyFromConfig;
+  /** Runtime for error logging. */
+  runtime?: RuntimeEnv;
 }): Promise<DispatchFromConfigResult> {
-  const { ctx, cfg, dispatcher } = params;
+  const { ctx, cfg, dispatcher, runtime } = params;
+  let deferred: ReplyDeferredInfo | undefined;
+
   const diagnosticsEnabled = isDiagnosticsEnabled(cfg);
   const channel = String(ctx.Surface ?? ctx.Provider ?? "unknown").toLowerCase();
   const chatId = ctx.To ?? ctx.From;
@@ -142,7 +149,7 @@ export async function dispatchReplyFromConfig(params: {
 
   if (shouldSkipDuplicateInbound(ctx)) {
     recordProcessed("skipped", { reason: "duplicate" });
-    return { queuedFinal: false, counts: dispatcher.getQueuedCounts() };
+    return { queuedFinal: false, counts: dispatcher.getQueuedCounts(), deferred };
   }
 
   const inboundAudio = isInboundAudioContext(ctx);
@@ -283,7 +290,7 @@ export async function dispatchReplyFromConfig(params: {
       counts.final += routedFinalCount;
       recordProcessed("completed", { reason: "fast_abort" });
       markIdle("message_completed");
-      return { queuedFinal, counts };
+      return { queuedFinal, counts, deferred };
     }
 
     // Track accumulated block text for TTS generation after streaming completes.
@@ -317,6 +324,10 @@ export async function dispatchReplyFromConfig(params: {
                 return run();
               }
             : undefined,
+        onDeferred: (info) => {
+          deferred = info;
+          params.replyOptions?.onDeferred?.(info);
+        },
         onBlockReply: (payload: ReplyPayload, context) => {
           const run = async () => {
             // Accumulate block text for TTS generation after streaming
@@ -444,11 +455,61 @@ export async function dispatchReplyFromConfig(params: {
 
     await dispatcher.waitForIdle();
 
+    // Generic voice reply synthesis: if inbound was audio and we have accumulated
+    // text without media, synthesize voice and send it.
+    // This makes voice reply work across all providers (WhatsApp, Telegram, etc.).
+    const accumulatedText = dispatcher.getAccumulatedText().trim();
+    const shouldSynthesizeVoice =
+      inboundAudio &&
+      accumulatedText &&
+      !dispatcher.hasDispatchedMedia() &&
+      cfg.audio?.reply?.command?.length;
+
+    if (shouldSynthesizeVoice) {
+      const audioReply = await synthesizeReplyAudio({
+        cfg,
+        ctx,
+        replyText: accumulatedText,
+        runtime,
+      });
+      if (audioReply?.mediaUrls?.length) {
+        const voicePayload: ReplyPayload = {
+          mediaUrls: audioReply.mediaUrls,
+          mediaUrl: audioReply.mediaUrls[0],
+          audioAsVoice: audioReply.audioAsVoice ?? true,
+        };
+        if (shouldRouteToOriginating && originatingChannel && originatingTo) {
+          const result = await routeReply({
+            payload: voicePayload,
+            channel: originatingChannel,
+            to: originatingTo,
+            sessionKey: ctx.SessionKey,
+            accountId: ctx.AccountId,
+            threadId: ctx.MessageThreadId,
+            cfg,
+          });
+          if (result.ok) {
+            queuedFinal = true;
+            routedFinalCount += 1;
+          }
+        } else {
+          queuedFinal = dispatcher.sendFinalReply(voicePayload) || queuedFinal;
+        }
+        await dispatcher.waitForIdle();
+        logVerbose("dispatch-from-config: synthesized voice reply");
+      }
+    }
+
     const counts = dispatcher.getQueuedCounts();
     counts.final += routedFinalCount;
-    recordProcessed("completed");
-    markIdle("message_completed");
-    return { queuedFinal, counts };
+    if (deferred && !queuedFinal) {
+      recordProcessed("skipped", { reason: `deferred:${deferred.reason}` });
+      markIdle("message_deferred");
+    } else {
+      recordProcessed("completed");
+      markIdle("message_completed");
+    }
+    return { queuedFinal, counts, deferred };
   } catch (err) {
     recordProcessed("error", { error: String(err) });
     markIdle("message_error");

@@ -15,6 +15,7 @@ import {
   buildHistoryContextFromEntries,
   type HistoryEntry,
 } from "../../../auto-reply/reply/history.js";
+import { formatDeferredInfo } from "../../../auto-reply/reply/deferred.js";
 import { finalizeInboundContext } from "../../../auto-reply/reply/inbound-context.js";
 import { dispatchReplyWithBufferedBlockDispatcher } from "../../../auto-reply/reply/provider-dispatcher.js";
 import { toLocationContext } from "../../../channels/location.js";
@@ -27,6 +28,7 @@ import {
 } from "../../../config/sessions.js";
 import { logVerbose, shouldLogVerbose } from "../../../globals.js";
 import { readChannelAllowFromStore } from "../../../pairing/pairing-store.js";
+import type { RuntimeEnv } from "../../../runtime.js";
 import { jidToE164, normalizeE164 } from "../../../utils.js";
 import { newConnectionId } from "../../reconnect.js";
 import { formatError } from "../../session.js";
@@ -105,6 +107,7 @@ async function resolveWhatsAppCommandAuthorized(params: {
 
 export async function processMessage(params: {
   cfg: ReturnType<typeof loadConfig>;
+  runtime: RuntimeEnv;
   msg: WebInboundMsg;
   route: ReturnType<typeof resolveAgentRoute>;
   groupHistoryKey: string;
@@ -334,9 +337,10 @@ export async function processMessage(params: {
   });
   trackBackgroundTask(params.backgroundTasks, metaTask);
 
-  const { queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
+  const { queuedFinal, deferred } = await dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
     cfg: params.cfg,
+    runtime: params.runtime,
     replyResolver: params.replyResolver,
     dispatcherOptions: {
       responsePrefix,
@@ -405,6 +409,10 @@ export async function processMessage(params: {
   });
 
   if (!queuedFinal) {
+    if (deferred) {
+      logVerbose(`Auto-reply deferred (${formatDeferredInfo(deferred)})`);
+      return false;
+    }
     if (shouldClearGroupHistory) {
       params.groupHistories.set(params.groupHistoryKey, []);
     }

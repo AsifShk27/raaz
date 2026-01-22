@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { AgentDefaultsSchema } from "./zod-schema.agent-defaults.js";
 import { AgentEntrySchema } from "./zod-schema.agent-runtime.js";
-import { TranscribeAudioSchema } from "./zod-schema.core.js";
+import { TranscribeAudioSchema, TtsReplySchema } from "./zod-schema.core.js";
 
 export const AgentsSchema = z
   .object({
@@ -47,7 +47,10 @@ export const BroadcastSchema = z
 
 export const AudioSchema = z
   .object({
+    /** Speech-to-text configuration for transcribing incoming voice messages */
     transcription: TranscribeAudioSchema,
+    /** Text-to-speech configuration for generating voice message replies */
+    reply: TtsReplySchema,
   })
   .strict()
   .optional();
