@@ -10,6 +10,7 @@ import {
   runEmbeddedPiAgent,
 } from "../agents/pi-embedded.js";
 import { getReplyFromConfig } from "./reply.js";
+import type { ReplyDeferredInfo } from "./types.js";
 
 vi.mock("../agents/pi-embedded.js", () => ({
   abortEmbeddedPiRun: vi.fn().mockReturnValue(false),
@@ -63,6 +64,7 @@ describe("queue followups", () => {
     vi.useFakeTimers();
     await withTempHome(async (home) => {
       const prompts: string[] = [];
+      const deferred: ReplyDeferredInfo[] = [];
       vi.mocked(runEmbeddedPiAgent).mockImplementation(async (params) => {
         prompts.push(params.prompt);
         if (params.prompt.includes("[Queued messages while agent was busy]")) {
@@ -83,10 +85,14 @@ describe("queue followups", () => {
 
       const first = await getReplyFromConfig(
         { Body: "first", From: "+1001", To: "+2000", MessageSid: "m-1" },
-        {},
+        { onDeferred: (info) => deferred.push(info) },
         cfg,
       );
       expect(first).toBeUndefined();
+      expect(deferred).toHaveLength(1);
+      expect(deferred[0]?.reason).toBe("queued");
+      expect(deferred[0]?.queueMode).toBe("collect");
+      expect(deferred[0]?.queueDepth).toBe(1);
       expect(runEmbeddedPiAgent).not.toHaveBeenCalled();
 
       vi.mocked(isEmbeddedPiRunActive).mockReturnValue(false);

@@ -13,6 +13,16 @@ export type ModelSelectedContext = {
   thinkLevel: string | undefined;
 };
 
+export type ReplyDeferredReason = "queued" | "steered" | "dropped";
+
+export type ReplyDeferredInfo = {
+  reason: ReplyDeferredReason;
+  queueKey?: string;
+  queueDepth?: number;
+  queueMode?: string;
+  messageId?: string;
+};
+
 export type GetReplyOptions = {
   /** Override run id for agent events (defaults to random UUID). */
   runId?: string;
@@ -32,6 +42,8 @@ export type GetReplyOptions = {
   /** Called when the actual model is selected (including after fallback).
    * Use this to get model/provider/thinkLevel for responsePrefix template interpolation. */
   onModelSelected?: (ctx: ModelSelectedContext) => void;
+  /** Called when a reply is deferred (queued, steered, or dropped by queue policy). */
+  onDeferred?: (info: ReplyDeferredInfo) => void;
   disableBlockStreaming?: boolean;
   /** Timeout for block reply delivery (ms). */
   blockReplyTimeoutMs?: number;

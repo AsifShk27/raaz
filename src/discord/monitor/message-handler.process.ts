@@ -18,6 +18,7 @@ import {
   clearHistoryEntriesIfEnabled,
 } from "../../auto-reply/reply/history.js";
 import { finalizeInboundContext } from "../../auto-reply/reply/inbound-context.js";
+import { formatDeferredInfo } from "../../auto-reply/reply/deferred.js";
 import { createReplyDispatcherWithTyping } from "../../auto-reply/reply/reply-dispatcher.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import { recordInboundSession } from "../../channels/session.js";
@@ -368,7 +369,7 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
     }).onReplyStart,
   });
 
-  const { queuedFinal, counts } = await dispatchInboundMessage({
+  const { queuedFinal, counts, deferred } = await dispatchInboundMessage({
     ctx: ctxPayload,
     cfg,
     dispatcher,
@@ -387,6 +388,14 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
   });
   markDispatchIdle();
   if (!queuedFinal) {
+    if (deferred) {
+      if (shouldLogVerbose()) {
+        logVerbose(
+          `discord: reply deferred (${formatDeferredInfo(deferred)}) to ${replyTarget}`,
+        );
+      }
+      return;
+    }
     if (isGuildMessage) {
       clearHistoryEntriesIfEnabled({
         historyMap: guildHistories,

@@ -1,6 +1,7 @@
 import { resolveHumanDelayConfig } from "../../../agents/identity.js";
 import { dispatchInboundMessage } from "../../../auto-reply/dispatch.js";
 import { clearHistoryEntriesIfEnabled } from "../../../auto-reply/reply/history.js";
+import { formatDeferredInfo } from "../../../auto-reply/reply/deferred.js";
 import { removeAckReactionAfterReply } from "../../../channels/ack-reactions.js";
 import { logAckFailure, logTypingFailure } from "../../../channels/logging.js";
 import { createReplyPrefixContext } from "../../../channels/reply-prefix.js";
@@ -122,7 +123,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     onIdle: typingCallbacks.onIdle,
   });
 
-  const { queuedFinal, counts } = await dispatchInboundMessage({
+  const { queuedFinal, counts, deferred } = await dispatchInboundMessage({
     ctx: prepared.ctxPayload,
     cfg,
     dispatcher,
@@ -145,6 +146,14 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
   const anyReplyDelivered = queuedFinal || (counts.block ?? 0) > 0 || (counts.final ?? 0) > 0;
 
   if (!anyReplyDelivered) {
+    if (deferred) {
+      if (shouldLogVerbose()) {
+        logVerbose(
+          `slack: reply deferred (${formatDeferredInfo(deferred)}) to ${prepared.replyTarget}`,
+        );
+      }
+      return;
+    }
     if (prepared.isRoomish) {
       clearHistoryEntriesIfEnabled({
         historyMap: ctx.channelHistories,

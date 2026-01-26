@@ -38,9 +38,10 @@ function schedule(coalesceMs: number) {
         schedule(DEFAULT_RETRY_MS);
       }
     } catch (err) {
+      const message = err instanceof Error ? err.stack ?? err.message : String(err);
+      console.error("[clawdbot] Heartbeat wake failed:", message);
       pendingReason = reason ?? "retry";
       schedule(DEFAULT_RETRY_MS);
-      throw err;
     } finally {
       running = false;
       if (pendingReason || scheduled) schedule(coalesceMs);

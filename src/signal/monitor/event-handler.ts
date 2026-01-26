@@ -15,6 +15,7 @@ import {
   clearHistoryEntriesIfEnabled,
 } from "../../auto-reply/reply/history.js";
 import { finalizeInboundContext } from "../../auto-reply/reply/inbound-context.js";
+import { formatDeferredInfo } from "../../auto-reply/reply/deferred.js";
 import { createReplyDispatcherWithTyping } from "../../auto-reply/reply/reply-dispatcher.js";
 import { logInboundDrop, logTypingFailure } from "../../channels/logging.js";
 import { createReplyPrefixContext } from "../../channels/reply-prefix.js";
@@ -215,7 +216,7 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
       onReplyStart: typingCallbacks.onReplyStart,
     });
 
-    const { queuedFinal } = await dispatchInboundMessage({
+    const { queuedFinal, deferred } = await dispatchInboundMessage({
       ctx: ctxPayload,
       cfg: deps.cfg,
       dispatcher,
@@ -231,6 +232,12 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
     });
     markDispatchIdle();
     if (!queuedFinal) {
+      if (deferred) {
+        logVerbose(
+          `signal: reply deferred (${formatDeferredInfo(deferred)}) for ${ctxPayload.From}`,
+        );
+        return;
+      }
       if (entry.isGroup && historyKey) {
         clearHistoryEntriesIfEnabled({
           historyMap: deps.groupHistories,

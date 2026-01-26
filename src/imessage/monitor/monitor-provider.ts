@@ -14,6 +14,7 @@ import {
 } from "../../auto-reply/inbound-debounce.js";
 import { dispatchInboundMessage } from "../../auto-reply/dispatch.js";
 import { finalizeInboundContext } from "../../auto-reply/reply/inbound-context.js";
+import { formatDeferredInfo } from "../../auto-reply/reply/deferred.js";
 import {
   buildPendingHistoryContextFromMap,
   clearHistoryEntriesIfEnabled,
@@ -550,7 +551,7 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
       },
     });
 
-    const { queuedFinal } = await dispatchInboundMessage({
+    const { queuedFinal, deferred } = await dispatchInboundMessage({
       ctx: ctxPayload,
       cfg,
       dispatcher,
@@ -564,6 +565,12 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
       },
     });
     if (!queuedFinal) {
+      if (deferred) {
+        logVerbose(
+          `imessage: reply deferred (${formatDeferredInfo(deferred)}) for ${ctxPayload.From}`,
+        );
+        return;
+      }
       if (isGroup && historyKey) {
         clearHistoryEntriesIfEnabled({
           historyMap: groupHistories,

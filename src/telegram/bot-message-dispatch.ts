@@ -2,6 +2,7 @@
 import { EmbeddedBlockChunker } from "../agents/pi-embedded-block-chunker.js";
 import { resolveChunkMode } from "../auto-reply/chunk.js";
 import { clearHistoryEntriesIfEnabled } from "../auto-reply/reply/history.js";
+import { formatDeferredInfo } from "../auto-reply/reply/deferred.js";
 import { dispatchReplyWithBufferedBlockDispatcher } from "../auto-reply/reply/provider-dispatcher.js";
 import { removeAckReactionAfterReply } from "../channels/ack-reactions.js";
 import { logAckFailure, logTypingFailure } from "../channels/logging.js";
@@ -128,7 +129,7 @@ export const dispatchTelegramMessage = async ({
   });
   const chunkMode = resolveChunkMode(cfg, "telegram", route.accountId);
 
-  const { queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
+  const { queuedFinal, deferred } = await dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
     cfg,
     runtime,
@@ -186,6 +187,10 @@ export const dispatchTelegramMessage = async ({
   });
   draftStream?.stop();
   if (!queuedFinal) {
+    if (deferred) {
+      logVerbose(`telegram: reply deferred (${formatDeferredInfo(deferred)}) for ${chatId}`);
+      return;
+    }
     if (isGroup && historyKey) {
       clearHistoryEntriesIfEnabled({ historyMap: groupHistories, historyKey, limit: historyLimit });
     }

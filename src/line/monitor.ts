@@ -28,6 +28,7 @@ import { chunkMarkdownText } from "../auto-reply/chunk.js";
 import { processLineMessage } from "./markdown-to-line.js";
 import { sendLineReplyChunks } from "./reply-chunks.js";
 import { deliverLineAutoReply } from "./auto-reply-delivery.js";
+import { formatDeferredInfo } from "../auto-reply/reply/deferred.js";
 
 export interface MonitorLineProviderOptions {
   channelAccessToken: string;
@@ -192,7 +193,7 @@ export async function monitorLineProvider(
         const textLimit = 5000; // LINE max message length
         let replyTokenUsed = false; // Track if we've used the one-time reply token
 
-        const { queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
+        const { queuedFinal, deferred } = await dispatchReplyWithBufferedBlockDispatcher({
           ctx: ctxPayload,
           cfg: config,
           dispatcherOptions: {
@@ -252,6 +253,12 @@ export async function monitorLineProvider(
         });
 
         if (!queuedFinal) {
+          if (deferred) {
+            logVerbose(
+              `line: reply deferred (${formatDeferredInfo(deferred)}) for ${ctxPayload.From}`,
+            );
+            return;
+          }
           logVerbose(`line: no response generated for message from ${ctxPayload.From}`);
         }
       } catch (err) {
