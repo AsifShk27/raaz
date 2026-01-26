@@ -33,6 +33,7 @@ const TRANSIENT_NETWORK_CODES = new Set([
   "UND_ERR_SOCKET",
   "UND_ERR_HEADERS_TIMEOUT",
   "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_ABORTED",
 ]);
 
 function getErrorCause(err: unknown): unknown {

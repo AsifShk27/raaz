@@ -27,7 +27,7 @@ import {
 } from "../fallback-state.js";
 import type { OriginatingChannelType, TemplateContext } from "../templating.js";
 import { resolveResponseUsageMode, type VerboseLevel } from "../thinking.js";
-import type { GetReplyOptions, ReplyPayload } from "../types.js";
+import type { GetReplyOptions, ReplyDeferredInfo, ReplyPayload } from "../types.js";
 import { runAgentTurnWithFallback } from "./agent-runner-execution.js";
 import {
   createShouldEmitToolOutput,
@@ -49,7 +49,7 @@ import {
   readSessionMessages,
 } from "./post-compaction-audit.js";
 import { readPostCompactionContext } from "./post-compaction-context.js";
-import { enqueueFollowupRun, type FollowupRun, type QueueSettings } from "./queue.js";
+import { enqueueFollowupRun, getFollowupQueueDepth, type FollowupRun, type QueueSettings } from "./queue.js";
 import { createReplyToModeFilterForChannel, resolveReplyToMode } from "./reply-threading.js";
 import { incrementRunCompactionCount, persistRunSessionUsage } from "./session-run-accounting.js";
 import { createTypingSignaler } from "./typing-mode.js";
@@ -177,6 +177,9 @@ export async function runReplyAgent(params: {
 
   const pendingToolTasks = new Set<Promise<void>>();
   const blockReplyTimeoutMs = opts?.blockReplyTimeoutMs ?? BLOCK_REPLY_SEND_TIMEOUT_MS;
+  const reportDeferred = (info: ReplyDeferredInfo) => {
+    opts?.onDeferred?.(info);
+  };
 
   const replyToChannel =
     sessionCtx.OriginatingChannel ??
@@ -228,6 +231,12 @@ export async function runReplyAgent(params: {
   if (shouldSteer && isStreaming) {
     const steered = queueEmbeddedPiMessage(followupRun.run.sessionId, followupRun.prompt);
     if (steered && !shouldFollowup) {
+      reportDeferred({
+        reason: "steered",
+        queueKey,
+        queueMode: resolvedQueue.mode,
+        messageId: followupRun.messageId,
+      });
       await touchActiveSessionEntry();
       typing.cleanup();
       return undefined;
@@ -235,7 +244,14 @@ export async function runReplyAgent(params: {
   }
 
   if (isActive && (shouldFollowup || resolvedQueue.mode === "steer")) {
-    enqueueFollowupRun(queueKey, followupRun, resolvedQueue);
+    const queued = enqueueFollowupRun(queueKey, followupRun, resolvedQueue);
+    reportDeferred({
+      reason: queued ? "queued" : "dropped",
+      queueKey,
+      queueMode: resolvedQueue.mode,
+      queueDepth: getFollowupQueueDepth(queueKey),
+      messageId: followupRun.messageId,
+    });
     await touchActiveSessionEntry();
     typing.cleanup();
     return undefined;

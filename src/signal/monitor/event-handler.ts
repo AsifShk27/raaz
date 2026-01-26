@@ -17,6 +17,7 @@ import {
 } from "../../auto-reply/reply/history.js";
 import { finalizeInboundContext } from "../../auto-reply/reply/inbound-context.js";
 import { buildMentionRegexes, matchesMentionPatterns } from "../../auto-reply/reply/mentions.js";
+import { formatDeferredInfo } from "../../auto-reply/reply/deferred.js";
 import { createReplyDispatcherWithTyping } from "../../auto-reply/reply/reply-dispatcher.js";
 import { resolveControlCommandGate } from "../../channels/command-gating.js";
 import { logInboundDrop, logTypingFailure } from "../../channels/logging.js";
@@ -240,7 +241,7 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
       onReplyStart: typingCallbacks.onReplyStart,
     });
 
-    const { queuedFinal } = await dispatchInboundMessage({
+    const { queuedFinal, deferred } = await dispatchInboundMessage({
       ctx: ctxPayload,
       cfg: deps.cfg,
       dispatcher,
@@ -254,6 +255,12 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
     });
     markDispatchIdle();
     if (!queuedFinal) {
+      if (deferred) {
+        logVerbose(
+          `signal: reply deferred (${formatDeferredInfo(deferred)}) for ${ctxPayload.From}`,
+        );
+        return;
+      }
       if (entry.isGroup && historyKey) {
         clearHistoryEntriesIfEnabled({
           historyMap: deps.groupHistories,

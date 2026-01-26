@@ -27,6 +27,7 @@ import {
 import { buildTemplateMessageFromPayload } from "./template-messages.js";
 import type { LineChannelData, ResolvedLineAccount } from "./types.js";
 import { createLineNodeWebhookHandler } from "./webhook-node.js";
+import { formatDeferredInfo } from "../auto-reply/reply/deferred.js";
 
 export interface MonitorLineProviderOptions {
   channelAccessToken: string;
@@ -198,7 +199,7 @@ export async function monitorLineProvider(
           accountId: route.accountId,
         });
 
-        const { queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
+        const { queuedFinal, deferred } = await dispatchReplyWithBufferedBlockDispatcher({
           ctx: ctxPayload,
           cfg: config,
           dispatcherOptions: {
@@ -260,6 +261,12 @@ export async function monitorLineProvider(
         });
 
         if (!queuedFinal) {
+          if (deferred) {
+            logVerbose(
+              `line: reply deferred (${formatDeferredInfo(deferred)}) for ${ctxPayload.From}`,
+            );
+            return;
+          }
           logVerbose(`line: no response generated for message from ${ctxPayload.From}`);
         }
       } catch (err) {

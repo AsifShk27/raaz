@@ -15,7 +15,7 @@ import { maybeApplyTtsToPayload, normalizeTtsAutoMode, resolveTtsConfig } from "
 import { synthesizeReplyAudio } from "../audio-reply.js";
 import { getReplyFromConfig } from "../reply.js";
 import type { FinalizedMsgContext } from "../templating.js";
-import type { GetReplyOptions, ReplyPayload } from "../types.js";
+import type { GetReplyOptions, ReplyDeferredInfo, ReplyPayload } from "../types.js";
 import { formatAbortReplyText, tryFastAbortFromMessage } from "./abort.js";
 import { shouldSkipDuplicateInbound } from "./inbound-dedupe.js";
 import type { ReplyDispatcher, ReplyDispatchKind } from "./reply-dispatcher.js";
@@ -80,6 +80,7 @@ const resolveSessionTtsAuto = (
 export type DispatchFromConfigResult = {
   queuedFinal: boolean;
   counts: Record<ReplyDispatchKind, number>;
+  deferred?: ReplyDeferredInfo;
 };
 
 export async function dispatchReplyFromConfig(params: {
@@ -92,6 +93,7 @@ export async function dispatchReplyFromConfig(params: {
   runtime?: RuntimeEnv;
 }): Promise<DispatchFromConfigResult> {
   const { ctx, cfg, dispatcher, runtime } = params;
+  let deferred: ReplyDeferredInfo | undefined;
   const diagnosticsEnabled = isDiagnosticsEnabled(cfg);
   const channel = String(ctx.Surface ?? ctx.Provider ?? "unknown").toLowerCase();
   const chatId = ctx.To ?? ctx.From;
@@ -147,7 +149,7 @@ export async function dispatchReplyFromConfig(params: {
 
   if (shouldSkipDuplicateInbound(ctx)) {
     recordProcessed("skipped", { reason: "duplicate" });
-    return { queuedFinal: false, counts: dispatcher.getQueuedCounts() };
+    return { queuedFinal: false, counts: dispatcher.getQueuedCounts(), deferred };
   }
 
   const inboundAudio = isInboundAudioContext(ctx);
@@ -315,7 +317,7 @@ export async function dispatchReplyFromConfig(params: {
       counts.final += routedFinalCount;
       recordProcessed("completed", { reason: "fast_abort" });
       markIdle("message_completed");
-      return { queuedFinal, counts };
+      return { queuedFinal, counts, deferred };
     }
 
     // Track accumulated block text for TTS generation after streaming completes.
@@ -364,6 +366,10 @@ export async function dispatchReplyFromConfig(params: {
             }
           };
           return run();
+        },
+        onDeferred: (info) => {
+          deferred = info;
+          params.replyOptions?.onDeferred?.(info);
         },
         onBlockReply: (payload: ReplyPayload, context) => {
           const run = async () => {
@@ -538,9 +544,14 @@ export async function dispatchReplyFromConfig(params: {
     }
     const counts = dispatcher.getQueuedCounts();
     counts.final += routedFinalCount;
-    recordProcessed("completed");
-    markIdle("message_completed");
-    return { queuedFinal, counts };
+    if (deferred && !queuedFinal) {
+      recordProcessed("skipped", { reason: `deferred:${deferred.reason}` });
+      markIdle("message_deferred");
+    } else {
+      recordProcessed("completed");
+      markIdle("message_completed");
+    }
+    return { queuedFinal, counts, deferred };
   } catch (err) {
     recordProcessed("error", { error: String(err) });
     markIdle("message_error");

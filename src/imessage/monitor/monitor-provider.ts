@@ -12,6 +12,7 @@ import {
   DEFAULT_GROUP_HISTORY_LIMIT,
   type HistoryEntry,
 } from "../../auto-reply/reply/history.js";
+import { formatDeferredInfo } from "../../auto-reply/reply/deferred.js";
 import { createReplyDispatcher } from "../../auto-reply/reply/reply-dispatcher.js";
 import { createReplyPrefixOptions } from "../../channels/reply-prefix.js";
 import { recordInboundSession } from "../../channels/session.js";
@@ -403,7 +404,7 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
       },
     });
 
-    const { queuedFinal } = await dispatchInboundMessage({
+    const { queuedFinal, deferred } = await dispatchInboundMessage({
       ctx: ctxPayload,
       cfg,
       dispatcher,
@@ -418,6 +419,12 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
     });
 
     if (!queuedFinal) {
+      if (deferred) {
+        logVerbose(
+          `imessage: reply deferred (${formatDeferredInfo(deferred)}) for ${ctxPayload.From}`,
+        );
+        return;
+      }
       if (decision.isGroup && decision.historyKey) {
         clearHistoryEntriesIfEnabled({
           historyMap: groupHistories,

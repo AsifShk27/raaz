@@ -1,6 +1,7 @@
 import { resolveHumanDelayConfig } from "../../../agents/identity.js";
 import { dispatchInboundMessage } from "../../../auto-reply/dispatch.js";
 import { clearHistoryEntriesIfEnabled } from "../../../auto-reply/reply/history.js";
+import { formatDeferredInfo } from "../../../auto-reply/reply/deferred.js";
 import { createReplyDispatcherWithTyping } from "../../../auto-reply/reply/reply-dispatcher.js";
 import type { ReplyPayload } from "../../../auto-reply/types.js";
 import { removeAckReactionAfterReply } from "../../../channels/ack-reactions.js";
@@ -347,7 +348,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     hasStreamedMessage = true;
   };
 
-  const { queuedFinal, counts } = await dispatchInboundMessage({
+  const { queuedFinal, counts, deferred } = await dispatchInboundMessage({
     ctx: prepared.ctxPayload,
     cfg,
     dispatcher,
@@ -410,6 +411,14 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
   const anyReplyDelivered = queuedFinal || (counts.block ?? 0) > 0 || (counts.final ?? 0) > 0;
 
   if (!anyReplyDelivered) {
+    if (deferred) {
+      if (shouldLogVerbose()) {
+        logVerbose(
+          `slack: reply deferred (${formatDeferredInfo(deferred)}) to ${prepared.replyTarget}`,
+        );
+      }
+      return;
+    }
     await draftStream.clear();
     if (prepared.isRoomish) {
       clearHistoryEntriesIfEnabled({

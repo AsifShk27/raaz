@@ -9,7 +9,9 @@ import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
 import { EmbeddedBlockChunker } from "../agents/pi-embedded-block-chunker.js";
 import { resolveChunkMode } from "../auto-reply/chunk.js";
 import { clearHistoryEntriesIfEnabled } from "../auto-reply/reply/history.js";
+import { formatDeferredInfo } from "../auto-reply/reply/deferred.js";
 import { dispatchReplyWithBufferedBlockDispatcher } from "../auto-reply/reply/provider-dispatcher.js";
+import type { ReplyDeferredInfo } from "../auto-reply/types.js";
 import { removeAckReactionAfterReply } from "../channels/ack-reactions.js";
 import { logAckFailure, logTypingFailure } from "../channels/logging.js";
 import { createReplyPrefixOptions } from "../channels/reply-prefix.js";
@@ -292,8 +294,9 @@ export const dispatchTelegramMessage = async ({
   };
 
   let queuedFinal = false;
+  let deferred: ReplyDeferredInfo | undefined;
   try {
-    ({ queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
+    ({ queuedFinal, deferred } = await dispatchReplyWithBufferedBlockDispatcher({
       ctx: ctxPayload,
       cfg,
       runtime,
@@ -462,7 +465,7 @@ export const dispatchTelegramMessage = async ({
     }
   }
   let sentFallback = false;
-  if (!deliveryState.delivered && deliveryState.skippedNonSilent > 0) {
+  if (!queuedFinal && !deferred && !deliveryState.delivered && deliveryState.skippedNonSilent > 0) {
     const result = await deliverReplies({
       replies: [{ text: EMPTY_RESPONSE_FALLBACK }],
       ...deliveryBaseOptions,
@@ -472,6 +475,10 @@ export const dispatchTelegramMessage = async ({
 
   const hasFinalResponse = queuedFinal || sentFallback;
   if (!hasFinalResponse) {
+    if (deferred) {
+      logVerbose(`telegram: reply deferred (${formatDeferredInfo(deferred)}) for ${chatId}`);
+      return;
+    }
     clearGroupHistory();
     return;
   }

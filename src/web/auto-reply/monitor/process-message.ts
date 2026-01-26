@@ -10,6 +10,7 @@ import {
   buildHistoryContextFromEntries,
   type HistoryEntry,
 } from "../../../auto-reply/reply/history.js";
+import { formatDeferredInfo } from "../../../auto-reply/reply/deferred.js";
 import { finalizeInboundContext } from "../../../auto-reply/reply/inbound-context.js";
 import { dispatchReplyWithBufferedBlockDispatcher } from "../../../auto-reply/reply/provider-dispatcher.js";
 import type { ReplyPayload } from "../../../auto-reply/types.js";
@@ -353,7 +354,7 @@ export async function processMessage(params: {
   });
   trackBackgroundTask(params.backgroundTasks, metaTask);
 
-  const { queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
+  const { queuedFinal, deferred } = await dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
     cfg: params.cfg,
     runtime: params.runtime,
@@ -426,6 +427,10 @@ export async function processMessage(params: {
   });
 
   if (!queuedFinal) {
+    if (deferred) {
+      logVerbose(`Auto-reply deferred (${formatDeferredInfo(deferred)})`);
+      return false;
+    }
     if (shouldClearGroupHistory) {
       params.groupHistories.set(params.groupHistoryKey, []);
     }

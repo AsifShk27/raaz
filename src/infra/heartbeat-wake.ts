@@ -163,7 +163,9 @@ function schedule(coalesceMs: number, kind: WakeTimerKind = "normal") {
           schedule(DEFAULT_RETRY_MS, "retry");
         }
       }
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.stack ?? err.message : String(err);
+      console.error("[openclaw] Heartbeat wake failed:", message);
       // Error is already logged by the heartbeat runner; schedule a retry.
       for (const pendingWake of pendingBatch) {
         queuePendingWakeReason({
