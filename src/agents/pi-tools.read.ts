@@ -1,11 +1,15 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { createEditTool, createReadTool, createWriteTool } from "@mariozechner/pi-coding-agent";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { detectMime } from "../media/mime.js";
 import { sniffMimeFromBase64 } from "../media/sniff-mime-from-base64.js";
+import { CONFIG_DIR, resolveUserPath } from "../utils.js";
 import type { ImageSanitizationLimits } from "./image-sanitization.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import { assertSandboxPath } from "./sandbox-paths.js";
 import type { SandboxFsBridge } from "./sandbox/fs-bridge.js";
+import { resolveBundledSkillsDir } from "./skills/bundled-dir.js";
 import { sanitizeToolResultImages } from "./tool-images.js";
 
 // NOTE(steipete): Upstream read now does file-magic MIME detection; we keep the wrapper
@@ -13,6 +17,116 @@ import { sanitizeToolResultImages } from "./tool-images.js";
 type ToolContentBlock = AgentToolResult<unknown>["content"][number];
 type ImageContentBlock = Extract<ToolContentBlock, { type: "image" }>;
 type TextContentBlock = Extract<ToolContentBlock, { type: "text" }>;
+type OpenClawConfigLike = {
+  skills?: {
+    load?: {
+      extraDirs?: unknown;
+    };
+  };
+};
+
+const SKILL_DOC_PATH_RE = /^(.*[\\/])skills[\\/](?<skill>[^\\/]+)[\\/]SKILL\.md$/i;
+const SKILLS_CONFIG_CACHE_TTL_MS = 5_000;
+let cachedConfiguredSkillRoots: { expiresAt: number; roots: string[] } | null = null;
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function dedupePaths(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const resolved = path.resolve(resolveUserPath(trimmed));
+    const key = resolved.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(resolved);
+  }
+  return result;
+}
+
+async function getConfiguredSkillRoots(): Promise<string[]> {
+  const now = Date.now();
+  if (cachedConfiguredSkillRoots && cachedConfiguredSkillRoots.expiresAt > now) {
+    return cachedConfiguredSkillRoots.roots;
+  }
+
+  const configPath = path.join(CONFIG_DIR, "openclaw.json");
+  let roots: string[] = [];
+  try {
+    const raw = await fs.readFile(configPath, "utf-8");
+    const parsed = JSON.parse(raw) as OpenClawConfigLike;
+    const extraDirsRaw = parsed.skills?.load?.extraDirs;
+    if (Array.isArray(extraDirsRaw)) {
+      roots = extraDirsRaw
+        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+        .filter(Boolean);
+    }
+  } catch {
+    roots = [];
+  }
+
+  const deduped = dedupePaths(roots);
+  cachedConfiguredSkillRoots = {
+    expiresAt: now + SKILLS_CONFIG_CACHE_TTL_MS,
+    roots: deduped,
+  };
+  return deduped;
+}
+
+async function resolveMissingSkillDocPath(filePath: string): Promise<string | undefined> {
+  if (!filePath.trim()) {
+    return undefined;
+  }
+  if (await pathExists(filePath)) {
+    return undefined;
+  }
+
+  const match = filePath.match(SKILL_DOC_PATH_RE);
+  const skillName = match?.groups?.skill?.trim();
+  if (!skillName) {
+    return undefined;
+  }
+
+  const sourceSkillsRoot = match?.[1] ? path.join(match[1], "skills") : undefined;
+  const bundledSkillsRoot = resolveBundledSkillsDir();
+  const configuredRoots = await getConfiguredSkillRoots();
+  const candidateSkillRoots = dedupePaths([
+    ...(sourceSkillsRoot ? [sourceSkillsRoot] : []),
+    path.join(process.cwd(), "skills"),
+    path.join(CONFIG_DIR, "skills"),
+    ...(bundledSkillsRoot ? [bundledSkillsRoot] : []),
+    ...configuredRoots,
+  ]);
+
+  for (const root of candidateSkillRoots) {
+    const candidate = path.join(root, skillName, "SKILL.md");
+    if (path.normalize(candidate) === path.normalize(filePath)) {
+      continue;
+    }
+    if (await pathExists(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function isNotFoundError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /ENOENT|no such file or directory/i.test(message);
+}
 
 const DEFAULT_READ_PAGE_MAX_BYTES = 50 * 1024;
 const MAX_ADAPTIVE_READ_MAX_BYTES = 512 * 1024;
@@ -608,19 +722,48 @@ export function createOpenClawReadTool(
         normalized ??
         (params && typeof params === "object" ? (params as Record<string, unknown>) : undefined);
       assertRequiredParams(record, CLAUDE_PARAM_GROUPS.read, base.name);
-      const result = await executeReadWithAdaptivePaging({
-        base,
-        toolCallId,
-        args: (normalized ?? params ?? {}) as Record<string, unknown>,
-        signal,
-        maxBytes: resolveAdaptiveReadMaxBytes(options),
-      });
-      const filePath = typeof record?.path === "string" ? String(record.path) : "<unknown>";
+      const executeRead = (pathOverride?: string) =>
+        executeReadWithAdaptivePaging({
+          base,
+          toolCallId,
+          args: {
+            ...((normalized ?? params ?? {}) as Record<string, unknown>),
+            ...(pathOverride ? { path: pathOverride } : {}),
+          },
+          signal,
+          maxBytes: resolveAdaptiveReadMaxBytes(options),
+        });
+      let result: AgentToolResult<unknown>;
+      let resolvedPath =
+        typeof record?.path === "string"
+          ? String(record.path)
+          : typeof record?.file_path === "string"
+            ? String(record.file_path)
+            : "<unknown>";
+      try {
+        result = await executeRead();
+      } catch (err) {
+        const requestedPath =
+          typeof record?.path === "string"
+            ? record.path
+            : typeof record?.file_path === "string"
+              ? record.file_path
+              : undefined;
+        if (!isNotFoundError(err) || typeof requestedPath !== "string") {
+          throw err;
+        }
+        const fallbackPath = await resolveMissingSkillDocPath(requestedPath);
+        if (!fallbackPath) {
+          throw err;
+        }
+        resolvedPath = fallbackPath;
+        result = await executeRead(fallbackPath);
+      }
       const strippedDetailsResult = stripReadTruncationContentDetails(result);
-      const normalizedResult = await normalizeReadImageResult(strippedDetailsResult, filePath);
+      const normalizedResult = await normalizeReadImageResult(strippedDetailsResult, resolvedPath);
       return sanitizeToolResultImages(
         normalizedResult,
-        `read:${filePath}`,
+        `read:${resolvedPath}`,
         options?.imageSanitization,
       );
     },

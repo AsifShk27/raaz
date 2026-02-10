@@ -246,14 +246,18 @@ export function stripPluginOnlyAllowlist(
       hasCoreEntry = true;
       continue;
     }
-    const isPluginEntry =
-      entry === "group:plugins" || pluginIds.has(entry) || pluginTools.has(entry);
     const expanded = expandToolGroups([entry]);
+    const isPluginEntry =
+      entry === "group:plugins" ||
+      pluginIds.has(entry) ||
+      pluginTools.has(entry) ||
+      expanded.some((tool) => pluginTools.has(tool));
     const isCoreEntry = expanded.some((tool) => coreTools.has(tool));
+    const isKnownToolEntry = expanded.some((tool) => coreTools.has(tool) || pluginTools.has(tool));
     if (isCoreEntry) {
       hasCoreEntry = true;
     }
-    if (!isCoreEntry && !isPluginEntry) {
+    if (!isKnownToolEntry && !isPluginEntry) {
       unknownAllowlist.push(entry);
     }
   }

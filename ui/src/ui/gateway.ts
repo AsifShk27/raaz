@@ -102,7 +102,9 @@ export class GatewayBrowserClient {
       this.ws = null;
       this.flushPending(new Error(`gateway closed (${ev.code}): ${reason}`));
       this.opts.onClose?.({ code: ev.code, reason });
-      this.scheduleReconnect();
+      if (this.shouldReconnectOnClose(ev.code, reason)) {
+        this.scheduleReconnect();
+      }
     });
     this.ws.addEventListener("error", () => {
       // ignored; close handler will fire
@@ -116,6 +118,27 @@ export class GatewayBrowserClient {
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 1.7, 15_000);
     window.setTimeout(() => this.connect(), delay);
+  }
+
+  private shouldReconnectOnClose(code: number, reason: string): boolean {
+    if (this.closed) {
+      return false;
+    }
+    if (code === 1008 || code === CONNECT_FAILED_CLOSE_CODE) {
+      return false;
+    }
+    const lower = reason.toLowerCase();
+    if (
+      lower.includes("unauthorized") ||
+      lower.includes("connect failed") ||
+      lower.includes("token missing") ||
+      lower.includes("token mismatch") ||
+      lower.includes("password missing") ||
+      lower.includes("password mismatch")
+    ) {
+      return false;
+    }
+    return true;
   }
 
   private flushPending(err: Error) {

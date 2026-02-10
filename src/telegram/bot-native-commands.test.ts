@@ -57,7 +57,10 @@ describe("registerTelegramNativeCommands", () => {
       command: vi.fn(),
     } as unknown as Parameters<typeof registerTelegramNativeCommands>[0]["bot"],
     cfg,
-    runtime: {} as unknown as RuntimeEnv,
+    runtime: {
+      log: vi.fn(),
+      error: vi.fn(),
+    } as unknown as RuntimeEnv,
     accountId,
     telegramCfg: {} as TelegramAccountConfig,
     allowFrom: [],
@@ -284,5 +287,37 @@ describe("registerTelegramNativeCommands", () => {
       }),
     );
     expect(sendMessage).not.toHaveBeenCalledWith(123, "Command not found.");
+  });
+
+  it("drops per-skill native commands when Telegram command count exceeds platform limit", () => {
+    listSkillCommandsForAgents.mockReturnValue(
+      Array.from({ length: 140 }).map((_, idx) => ({
+        name: `skill_cmd_${idx}`,
+        skillName: `skill-${idx}`,
+        description: `Skill ${idx}`,
+      })),
+    );
+    const cfg: OpenClawConfig = {
+      agents: {
+        list: [{ id: "main", default: true }],
+      },
+    };
+    const params = buildParams(cfg);
+
+    registerTelegramNativeCommands(params);
+
+    const setMyCommands = params.bot.api.setMyCommands as unknown as ReturnType<typeof vi.fn>;
+    const runtimeLog = params.runtime.log as unknown as ReturnType<typeof vi.fn>;
+    const registered = (setMyCommands.mock.calls[0]?.[0] ?? []) as Array<{
+      command: string;
+      description: string;
+    }>;
+
+    expect(registered.length).toBeLessThanOrEqual(100);
+    expect(registered.some((entry) => entry.command === "skill")).toBe(true);
+    expect(registered.some((entry) => entry.command.startsWith("skill_cmd_"))).toBe(false);
+    expect(runtimeLog).toHaveBeenCalledWith(
+      expect.stringContaining("removing per-skill commands and keeping /skill"),
+    );
   });
 });

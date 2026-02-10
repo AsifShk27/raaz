@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
+import { spawn } from "node:child_process";
+import fs from "node:fs";
 import module from "node:module";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // https://nodejs.org/api/module.html#module-compile-cache
 if (module.enableCompileCache && !process.env.NODE_DISABLE_COMPILE_CACHE) {
@@ -33,24 +37,57 @@ const installProcessWarningFilter = async () => {
 };
 
 await installProcessWarningFilter();
+const here = path.dirname(fileURLToPath(import.meta.url));
+const args = process.argv.slice(2);
+const wrapperPath =
+  process.env.OPENCLAW_WITH_TTS_WRAPPER ??
+  "/home/shkas/projects/raaz/skills/tts-server-directml/scripts/openclaw-with-tts.sh";
 
-const tryImport = async (specifier) => {
-  try {
-    await import(specifier);
-    return true;
-  } catch (err) {
-    // Only swallow missing-module errors; rethrow real runtime errors.
-    if (isModuleNotFoundError(err)) {
-      return false;
-    }
-    throw err;
+const main = async () => {
+  const isGatewayCommand = args[0] === "gateway" || args[0] === "daemon";
+  const shouldWrap = isGatewayCommand && process.env.OPENCLAW_WRAPPED !== "1";
+  if (shouldWrap && fs.existsSync(wrapperPath)) {
+    const env = {
+      ...process.env,
+      OPENCLAW_WRAPPED: "1",
+      OPENCLAW_BIN: path.join(here, "openclaw.mjs"),
+    };
+    const child = spawn(wrapperPath, args, {
+      cwd: here,
+      env,
+      stdio: "inherit",
+    });
+    await new Promise((resolve) => {
+      child.on("exit", (exitCode, exitSignal) => {
+        if (exitSignal) {
+          process.exit(1);
+        }
+        process.exit(exitCode ?? 1);
+      });
+      child.on("close", resolve);
+    });
+    return;
   }
+
+  const entryCandidates = [
+    path.join(here, "dist", "entry.js"),
+    path.join(here, "dist", "entry.mjs"),
+    path.join(here, "dist", "index.mjs"),
+    path.join(here, "dist", "index.js"),
+  ];
+  const entryPath = entryCandidates.find((candidate) => fs.existsSync(candidate));
+  if (!entryPath) {
+    throw new Error(
+      "OpenClaw build output missing. Expected dist/entry.(m)js or dist/index.(m)js. Run `pnpm build`.",
+    );
+  }
+
+  // Ensure the imported entry sees itself as the main module (isMainModule check).
+  if (!process.argv[1] || path.resolve(process.argv[1]) !== path.resolve(entryPath)) {
+    process.argv[1] = entryPath;
+  }
+
+  await import(pathToFileURL(entryPath).href);
 };
 
-if (await tryImport("./dist/entry.js")) {
-  // OK
-} else if (await tryImport("./dist/entry.mjs")) {
-  // OK
-} else {
-  throw new Error("openclaw: missing dist/entry.(m)js (build output).");
-}
+await main();

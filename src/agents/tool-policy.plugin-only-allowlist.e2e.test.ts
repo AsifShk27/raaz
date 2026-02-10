@@ -5,6 +5,10 @@ const pluginGroups: PluginToolGroups = {
   all: ["lobster", "workflow_tool"],
   byPlugin: new Map([["lobster", ["lobster", "workflow_tool"]]]),
 };
+const memoryPluginGroups: PluginToolGroups = {
+  all: ["memory_search", "memory_get"],
+  byPlugin: new Map([["memory-core", ["memory_search", "memory_get"]]]),
+};
 const coreTools = new Set(["read", "write", "exec", "session_status"]);
 
 describe("stripPluginOnlyAllowlist", () => {
@@ -52,5 +56,25 @@ describe("stripPluginOnlyAllowlist", () => {
     );
     expect(policy.policy?.allow).toEqual(["read", "lobster"]);
     expect(policy.unknownAllowlist).toEqual(["lobster"]);
+  });
+
+  it("does not report known group entries that expand to plugin tools", () => {
+    const policy = stripPluginOnlyAllowlist(
+      { allow: ["group:fs", "group:memory"] },
+      memoryPluginGroups,
+      coreTools,
+    );
+    expect(policy.policy?.allow).toEqual(["group:fs", "group:memory"]);
+    expect(policy.unknownAllowlist).toEqual([]);
+  });
+
+  it("strips plugin-only group entries without flagging them unknown", () => {
+    const policy = stripPluginOnlyAllowlist(
+      { allow: ["group:memory"] },
+      memoryPluginGroups,
+      coreTools,
+    );
+    expect(policy.policy?.allow).toBeUndefined();
+    expect(policy.unknownAllowlist).toEqual([]);
   });
 });

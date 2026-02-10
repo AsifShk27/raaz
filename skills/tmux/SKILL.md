@@ -5,149 +5,176 @@ metadata:
   { "openclaw": { "emoji": "🧵", "os": ["darwin", "linux"], "requires": { "bins": ["tmux"] } } }
 ---
 
-# tmux Session Control
+# tmux Skill (OpenClaw)
 
-Control tmux sessions by sending keystrokes and reading output. Essential for managing Claude Code sessions.
+Use tmux only when you need an interactive TTY. Prefer exec background mode for long-running, non-interactive tasks.
 
-## When to Use
-
-✅ **USE this skill when:**
-
-- Monitoring Claude/Codex sessions in tmux
-- Sending input to interactive terminal applications
-- Scraping output from long-running processes in tmux
-- Navigating tmux panes/windows programmatically
-- Checking on background work in existing sessions
-
-## When NOT to Use
-
-❌ **DON'T use this skill when:**
-
-- Running one-off shell commands → use `exec` tool directly
-- Starting new background processes → use `exec` with `background:true`
-- Non-interactive scripts → use `exec` tool
-- The process isn't in tmux
-- You need to create a new tmux session → use `exec` with `tmux new-session`
-
-## Example Sessions
-
-| Session                 | Purpose                     |
-| ----------------------- | --------------------------- |
-| `shared`                | Primary interactive session |
-| `worker-2` - `worker-8` | Parallel worker sessions    |
-
-## Common Commands
-
-### List Sessions
+## Quickstart (isolated socket, exec tool)
 
 ```bash
-tmux list-sessions
-tmux ls
+SOCKET_DIR="${OPENCLAW_TMUX_SOCKET_DIR:-${CLAWDBOT_TMUX_SOCKET_DIR:-${TMPDIR:-/tmp}/openclaw-tmux-sockets}}"
+mkdir -p "$SOCKET_DIR"
+SOCKET="$SOCKET_DIR/openclaw.sock"
+SESSION=openclaw-python
+
+tmux -S "$SOCKET" new -d -s "$SESSION" -n shell
+tmux -S "$SOCKET" send-keys -t "$SESSION":0.0 -- 'PYTHON_BASIC_REPL=1 python3 -q' Enter
+tmux -S "$SOCKET" capture-pane -p -J -t "$SESSION":0.0 -S -200
 ```
 
-### Capture Output
+After starting a session, always print monitor commands:
+
+```
+To monitor:
+  tmux -S "$SOCKET" attach -t "$SESSION"
+  tmux -S "$SOCKET" capture-pane -p -J -t "$SESSION":0.0 -S -200
+```
+
+## Socket convention
+
+- Use `OPENCLAW_TMUX_SOCKET_DIR` (legacy `CLAWDBOT_TMUX_SOCKET_DIR` also supported).
+- Default socket path: `"$OPENCLAW_TMUX_SOCKET_DIR/openclaw.sock"`.
+
+## Targeting panes and naming
+
+- Target format: `session:window.pane` (defaults to `:0.0`).
+- Keep names short; avoid spaces.
+- Inspect: `tmux -S "$SOCKET" list-sessions`, `tmux -S "$SOCKET" list-panes -a`.
+
+## Finding sessions
+
+- List sessions on your socket: `{baseDir}/scripts/find-sessions.sh -S "$SOCKET"`.
+- Scan all sockets: `{baseDir}/scripts/find-sessions.sh --all` (uses `OPENCLAW_TMUX_SOCKET_DIR`).
+
+## Persistent Codex Workspaces (Raaz)
+
+For Raaz collab Codex agents, prefer persistent paths and never default to `/tmp` workdirs.
+
+Workspace map:
+
+- `codex` -> `/home/shkas/projects/raaz/.clawdhub/workspaces/codex`
+- `codex-patch` -> `/home/shkas/projects/raaz/.clawdhub/workspaces/codex-patch`
+- `codex-circuit` -> `/home/shkas/projects/raaz/.clawdhub/workspaces/codex-circuit`
+- `codex-4` -> `/home/shkas/projects/raaz/.clawdhub/workspaces/codex-4`
+- `codex-5` -> `/home/shkas/projects/raaz/.clawdhub/workspaces/codex-5`
+
+Persistent socket:
+
+- `SOCKET=/home/shkas/projects/raaz/.clawdhub/tmux/codex-army.sock`
+
+Create sessions with `-c <workspace>` so each session starts in its own persistent directory.
+
+## Production Collab Bootstrap (Required)
+
+For multi-agent Codex collaboration demos, do not hand-roll pane creation with raw `new-window/split-window` plus shell `echo` tasks.
+That creates plain shell panes and produces fake "agent work" transcripts.
+
+Use the deterministic helper instead:
 
 ```bash
-# Last 20 lines of pane
-tmux capture-pane -t shared -p | tail -20
-
-# Entire scrollback
-tmux capture-pane -t shared -p -S -
-
-# Specific pane in window
-tmux capture-pane -t shared:0.0 -p
+SOCKET="/home/shkas/projects/raaz/.clawdhub/tmux/codex-army.sock"
+{baseDir}/scripts/codex-collab.sh start --socket "$SOCKET" --session collab-test --window collab-test
+{baseDir}/scripts/codex-collab.sh status --socket "$SOCKET" --session collab-test --window collab-test
 ```
 
-### Send Keys
+By default, `start` pulls slot1-slot5 workspace/command mapping from the live runtime profile:
+
+- `/mnt/d/projects/trading-platform/scripts/prepare_agent_runtime.sh profile`
+- this keeps collab panes aligned with the same persistent workspaces used by the current agent runtime.
+
+You can force static mapping only when needed:
 
 ```bash
-# Send text (doesn't press Enter)
-tmux send-keys -t shared "hello"
-
-# Send text + Enter
-tmux send-keys -t shared "y" Enter
-
-# Send special keys
-tmux send-keys -t shared Enter
-tmux send-keys -t shared Escape
-tmux send-keys -t shared C-c          # Ctrl+C
-tmux send-keys -t shared C-d          # Ctrl+D (EOF)
-tmux send-keys -t shared C-z          # Ctrl+Z (suspend)
+{baseDir}/scripts/codex-collab.sh start --socket "$SOCKET" --session collab-test --window collab-test --workspace-source static
 ```
 
-### Window/Pane Navigation
+Dispatch work only through helper commands (they enforce interactive-process checks):
 
 ```bash
-# Select window
-tmux select-window -t shared:0
-
-# Select pane
-tmux select-pane -t shared:0.1
-
-# List windows
-tmux list-windows -t shared
+{baseDir}/scripts/codex-collab.sh send --socket "$SOCKET" --session collab-test --window collab-test --agent codex --text "Research AWS AgentCore fit for DDOPs."
+{baseDir}/scripts/codex-collab.sh send --socket "$SOCKET" --session collab-test --window collab-test --agent codex-5 --file /tmp/task.txt
 ```
 
-### Session Management
+Before claiming "agents are working", confirm `status` shows:
+
+- `Process` is the expected interactive CLI process (`codex`/`claude`, or `node` for their foreground runtime).
+- `Gate` is `ready` (not `login` or `workspace-trust`).
+
+If `Gate` is not `ready`, clear it first in the pane (login/workspace trust flow) or use explicit override flags (`--allow-gated 1`) only when intentionally bypassing safeguards.
+
+## Sending input safely
+
+- Prefer literal sends: `tmux -S "$SOCKET" send-keys -t target -l -- "$cmd"`.
+- Control keys: `tmux -S "$SOCKET" send-keys -t target C-c`.
+- For interactive TUI apps like Claude Code/Codex, this guidance covers **how to send commands**.
+  Do **not** append `Enter` in the same `send-keys`. These apps may treat a fast text+Enter
+  sequence as paste/multi-line input and not submit; this is timing-dependent. Send text and
+  `Enter` as separate commands with a small delay (tune per environment; increase if needed,
+  or use `sleep 1` if sub-second sleeps aren't supported):
 
 ```bash
-# Create new session
-tmux new-session -d -s newsession
-
-# Kill session
-tmux kill-session -t sessionname
-
-# Rename session
-tmux rename-session -t old new
+tmux -S "$SOCKET" send-keys -t target -l -- "$cmd" && sleep 0.1 && tmux -S "$SOCKET" send-keys -t target Enter
 ```
 
-## Sending Input Safely
+## Watching output
 
-For interactive TUIs (Claude Code, Codex, etc.), split text and Enter into separate sends to avoid paste/multiline edge cases:
+- Capture recent history: `tmux -S "$SOCKET" capture-pane -p -J -t target -S -200`.
+- Wait for prompts: `{baseDir}/scripts/wait-for-text.sh -t session:0.0 -p 'pattern'`.
+- Attaching is OK; detach with `Ctrl+b d`.
+
+## Spawning processes
+
+- For python REPLs, set `PYTHON_BASIC_REPL=1` (non-basic REPL breaks send-keys flows).
+
+## Windows / WSL
+
+- tmux is supported on macOS/Linux. On Windows, use WSL and install tmux inside WSL.
+- This skill is gated to `darwin`/`linux` and requires `tmux` on PATH.
+
+## Orchestrating Coding Agents (Codex, Claude Code)
+
+tmux excels at running multiple coding agents in parallel:
 
 ```bash
-tmux send-keys -t shared -l -- "Please apply the patch in src/foo.ts"
-sleep 0.1
-tmux send-keys -t shared Enter
+SOCKET="/home/shkas/projects/raaz/.clawdhub/tmux/codex-army.sock"
+
+# Bootstrap a 5-agent collab window with interactive Codex CLIs.
+{baseDir}/scripts/codex-collab.sh start --socket "$SOCKET" --session collab-test --window collab-test
+
+# Verify panes are interactive (process should be codex, not bash).
+{baseDir}/scripts/codex-collab.sh status --socket "$SOCKET" --session collab-test --window collab-test
+
+# Send targeted tasks.
+{baseDir}/scripts/codex-collab.sh send --socket "$SOCKET" --session collab-test --window collab-test --agent codex-4 --text "Fix bug X."
+{baseDir}/scripts/codex-collab.sh send --socket "$SOCKET" --session collab-test --window collab-test --agent codex-5 --text "Fix bug Y."
+
+# Capture output.
+{baseDir}/scripts/codex-collab.sh capture --socket "$SOCKET" --session collab-test --window collab-test --agent codex-4 --lines 120
 ```
 
-## Claude Code Session Patterns
+**Tips:**
 
-### Check if Session Needs Input
+- Use separate git worktrees for parallel fixes (no branch conflicts)
+- `pnpm install` first before running codex in fresh clones
+- Check process state with `codex-collab.sh status` before/after dispatch
+- Codex needs `--yolo` or `--full-auto` for non-interactive fixes
+
+## Cleanup
+
+- Kill a session: `tmux -S "$SOCKET" kill-session -t "$SESSION"`.
+- Kill all sessions on a socket: `tmux -S "$SOCKET" list-sessions -F '#{session_name}' | xargs -r -n1 tmux -S "$SOCKET" kill-session -t`.
+- Remove everything on the private socket: `tmux -S "$SOCKET" kill-server`.
+
+## Helper: wait-for-text.sh
+
+`{baseDir}/scripts/wait-for-text.sh` polls a pane for a regex (or fixed string) with a timeout.
 
 ```bash
-# Look for prompts
-tmux capture-pane -t worker-3 -p | tail -10 | grep -E "❯|Yes.*No|proceed|permission"
+{baseDir}/scripts/wait-for-text.sh -t session:0.0 -p 'pattern' [-F] [-T 20] [-i 0.5] [-l 2000]
 ```
 
-### Approve Claude Code Prompt
-
-```bash
-# Send 'y' and Enter
-tmux send-keys -t worker-3 'y' Enter
-
-# Or select numbered option
-tmux send-keys -t worker-3 '2' Enter
-```
-
-### Check All Sessions Status
-
-```bash
-for s in shared worker-2 worker-3 worker-4 worker-5 worker-6 worker-7 worker-8; do
-  echo "=== $s ==="
-  tmux capture-pane -t $s -p 2>/dev/null | tail -5
-done
-```
-
-### Send Task to Session
-
-```bash
-tmux send-keys -t worker-4 "Fix the bug in auth.js" Enter
-```
-
-## Notes
-
-- Use `capture-pane -p` to print to stdout (essential for scripting)
-- `-S -` captures entire scrollback history
-- Target format: `session:window.pane` (e.g., `shared:0.0`)
-- Sessions persist across SSH disconnects
+- `-t`/`--target` pane target (required)
+- `-p`/`--pattern` regex to match (required); add `-F` for fixed string
+- `-T` timeout seconds (integer, default 15)
+- `-i` poll interval seconds (default 0.5)
+- `-l` history lines to search (integer, default 1000)
