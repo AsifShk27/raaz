@@ -62,6 +62,10 @@ import {
 import { callGatewayTool } from "./tools/gateway.js";
 import { listNodes, resolveNodeIdFromList } from "./tools/nodes-utils.js";
 
+function isExecApprovalsFile(value: unknown): value is ExecApprovalsFile {
+  return isRecord(value) && value.version === 1;
+}
+
 export type ExecToolDefaults = {
   host?: ExecHost;
   security?: ExecSecurity;
@@ -392,9 +396,9 @@ export function createExecTool(
               { nodeId },
             );
             const approvalsFile = isRecord(approvalsSnapshot) ? approvalsSnapshot.file : undefined;
-            if (isRecord(approvalsFile)) {
+            if (isExecApprovalsFile(approvalsFile)) {
               const resolved = resolveExecApprovalsFromFile({
-                file: approvalsFile as ExecApprovalsFile,
+                file: approvalsFile,
                 agentId,
                 overrides: { security: "allowlist" },
               });
