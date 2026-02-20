@@ -193,6 +193,40 @@ const runOpenClaw = async (deps) => {
   return res.exitCode ?? 1;
 };
 
+const readPackageVersion = (deps) => {
+  try {
+    const pkgPath = path.join(deps.cwd, "package.json");
+    const raw = deps.fs.readFileSync(pkgPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const version = typeof parsed?.version === "string" ? parsed.version.trim() : "";
+    return version || null;
+  } catch {
+    return null;
+  }
+};
+
+const readBuildInfo = (deps) => {
+  const mtime = statMtime(deps.buildInfoPath, deps.fs);
+  if (mtime == null) {
+    return { version: null, commit: null };
+  }
+  try {
+    const raw = deps.fs.readFileSync(deps.buildInfoPath, "utf8").trim();
+    if (!raw.startsWith("{")) {
+      return { version: null, commit: null };
+    }
+    const parsed = JSON.parse(raw);
+    const version = typeof parsed?.version === "string" ? parsed.version.trim() : "";
+    const commit = typeof parsed?.commit === "string" ? parsed.commit.trim() : "";
+    return {
+      version: version || null,
+      commit: commit || null,
+    };
+  } catch {
+    return { version: null, commit: null };
+  }
+};
+
 const writeBuildStamp = (deps) => {
   try {
     deps.fs.mkdirSync(deps.distRoot, { recursive: true });
@@ -204,6 +238,27 @@ const writeBuildStamp = (deps) => {
   } catch (error) {
     // Best-effort stamp; still allow the runner to start.
     logRunner(`Failed to write build stamp: ${error?.message ?? "unknown error"}`, deps);
+  }
+};
+
+const writeBuildInfo = (deps) => {
+  try {
+    const version = readPackageVersion(deps);
+    const commit = resolveGitHead(deps);
+    const existing = readBuildInfo(deps);
+    if (existing.version === version && existing.commit === commit) {
+      return;
+    }
+    deps.fs.mkdirSync(deps.distRoot, { recursive: true });
+    const buildInfo = {
+      version,
+      commit,
+      builtAt: new Date().toISOString(),
+    };
+    deps.fs.writeFileSync(deps.buildInfoPath, `${JSON.stringify(buildInfo, null, 2)}\n`);
+  } catch (error) {
+    // Best-effort metadata refresh; still allow the runner to start.
+    logRunner(`Failed to write build info: ${error?.message ?? "unknown error"}`, deps);
   }
 };
 
@@ -223,10 +278,12 @@ export async function runNodeMain(params = {}) {
   deps.distRoot = path.join(deps.cwd, "dist");
   deps.distEntry = path.join(deps.distRoot, "/entry.js");
   deps.buildStampPath = path.join(deps.distRoot, ".buildstamp");
+  deps.buildInfoPath = path.join(deps.distRoot, "build-info.json");
   deps.srcRoot = path.join(deps.cwd, "src");
   deps.configFiles = [path.join(deps.cwd, "tsconfig.json"), path.join(deps.cwd, "package.json")];
 
   if (!shouldBuild(deps)) {
+    writeBuildInfo(deps);
     return await runOpenClaw(deps);
   }
 
@@ -250,6 +307,7 @@ export async function runNodeMain(params = {}) {
     return buildRes.exitCode;
   }
   writeBuildStamp(deps);
+  writeBuildInfo(deps);
   return await runOpenClaw(deps);
 }
 
