@@ -8,6 +8,12 @@ import {
   stripMinimaxToolCallXml,
   stripThinkingTagsFromText,
 } from "../pi-embedded-utils.js";
+export {
+  createSessionVisibilityGuard,
+  resolveEffectiveSessionToolsVisibility,
+  resolveSandboxedSessionToolContext,
+} from "./sessions-access.js";
+export { isRequesterSpawnedSessionVisible } from "./sessions-resolution.js";
 
 export type SessionKind = "main" | "group" | "cron" | "hook" | "node" | "other";
 
