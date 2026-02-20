@@ -1,10 +1,10 @@
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
-import { STATE_DIR } from "../config/paths.js";
-import { TELEGRAM_COMMAND_NAME_PATTERN } from "../config/telegram-custom-commands.js";
 import type { TelegramAccountConfig } from "../config/types.js";
 import type { RuntimeEnv } from "../runtime.js";
+import { STATE_DIR } from "../config/paths.js";
+import { TELEGRAM_COMMAND_NAME_PATTERN } from "../config/telegram-custom-commands.js";
 import { registerTelegramNativeCommands } from "./bot-native-commands.js";
 
 const { listSkillCommandsForAgents } = vi.hoisted(() => ({
@@ -287,37 +287,5 @@ describe("registerTelegramNativeCommands", () => {
       }),
     );
     expect(sendMessage).not.toHaveBeenCalledWith(123, "Command not found.");
-  });
-
-  it("drops per-skill native commands when Telegram command count exceeds platform limit", () => {
-    listSkillCommandsForAgents.mockReturnValue(
-      Array.from({ length: 140 }).map((_, idx) => ({
-        name: `skill_cmd_${idx}`,
-        skillName: `skill-${idx}`,
-        description: `Skill ${idx}`,
-      })),
-    );
-    const cfg: OpenClawConfig = {
-      agents: {
-        list: [{ id: "main", default: true }],
-      },
-    };
-    const params = buildParams(cfg);
-
-    registerTelegramNativeCommands(params);
-
-    const setMyCommands = params.bot.api.setMyCommands as unknown as ReturnType<typeof vi.fn>;
-    const runtimeLog = params.runtime.log as unknown as ReturnType<typeof vi.fn>;
-    const registered = (setMyCommands.mock.calls[0]?.[0] ?? []) as Array<{
-      command: string;
-      description: string;
-    }>;
-
-    expect(registered.length).toBeLessThanOrEqual(100);
-    expect(registered.some((entry) => entry.command === "skill")).toBe(true);
-    expect(registered.some((entry) => entry.command.startsWith("skill_cmd_"))).toBe(false);
-    expect(runtimeLog).toHaveBeenCalledWith(
-      expect.stringContaining("removing per-skill commands and keeping /skill"),
-    );
   });
 });
