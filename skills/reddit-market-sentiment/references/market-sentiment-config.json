@@ -1,0 +1,195 @@
+{
+  "version": 1,
+  "defaults": {
+    "timezone": "Asia/Kolkata",
+    "sort": "new",
+    "time_filter": "day",
+    "post_limit": 80,
+    "max_age_hours": 72,
+    "recency_half_life_hours": 18,
+    "min_score": 5,
+    "min_comments": 2,
+    "min_upvote_ratio": 0.6,
+    "summarize": {
+      "top": 0,
+      "length": "short",
+      "max_output_tokens": 180,
+      "model": "cli/codex/gpt-5.2",
+      "firecrawl": "auto"
+    }
+  },
+  "groups": {
+    "us": {
+      "label": "US Equities",
+      "subreddits": [
+        "stocks",
+        "investing",
+        "StockMarket",
+        "wallstreetbets",
+        "options",
+        "securityanalysis",
+        "ValueInvesting"
+      ],
+      "assets": {
+        "spx": {
+          "name": "S&P 500",
+          "keywords": ["S&P 500", "SPX", "SPY", "$SPY", "SP500"]
+        },
+        "ndx": {
+          "name": "Nasdaq 100",
+          "keywords": ["NASDAQ 100", "NDX", "QQQ", "$QQQ", "Nasdaq"]
+        },
+        "dow": {
+          "name": "Dow Jones",
+          "keywords": ["Dow Jones", "DJIA", "DIA", "$DIA"]
+        },
+        "rut": {
+          "name": "Russell 2000",
+          "keywords": ["Russell 2000", "RUT", "IWM", "$IWM"]
+        },
+        "vix": {
+          "name": "VIX",
+          "keywords": ["VIX", "$VIX", "volatility index"]
+        },
+        "aapl": {
+          "name": "Apple (AAPL)",
+          "keywords": ["AAPL", "$AAPL", "Apple"]
+        },
+        "msft": {
+          "name": "Microsoft (MSFT)",
+          "keywords": ["MSFT", "$MSFT", "Microsoft"]
+        },
+        "nvda": {
+          "name": "Nvidia (NVDA)",
+          "keywords": ["NVDA", "$NVDA", "Nvidia"]
+        },
+        "tsla": {
+          "name": "Tesla (TSLA)",
+          "keywords": ["TSLA", "$TSLA", "Tesla"]
+        },
+        "amzn": {
+          "name": "Amazon (AMZN)",
+          "keywords": ["AMZN", "$AMZN", "Amazon"]
+        },
+        "meta": {
+          "name": "Meta (META)",
+          "keywords": ["META", "$META", "Meta", "Facebook"]
+        },
+        "googl": {
+          "name": "Alphabet (GOOGL)",
+          "keywords": ["GOOGL", "GOOG", "$GOOGL", "$GOOG", "Alphabet", "Google"]
+        }
+      }
+    },
+    "india": {
+      "label": "India Equities",
+      "subreddits": [
+        "IndianStockMarket",
+        "IndiaInvestments",
+        "DalalStreetTalks",
+        "stocks",
+        "investing"
+      ],
+      "assets": {
+        "nifty": {
+          "name": "NIFTY 50",
+          "keywords": ["NIFTY", "NIFTY 50", "NIFTY50", "Nifty50"]
+        },
+        "banknifty": {
+          "name": "BANKNIFTY",
+          "keywords": ["BANKNIFTY", "NIFTY BANK", "Bank Nifty"]
+        },
+        "sensex": {
+          "name": "SENSEX",
+          "keywords": ["SENSEX", "BSE Sensex", "Sensex"]
+        },
+        "reliance": {
+          "name": "Reliance Industries",
+          "keywords": ["RELIANCE", "$RELIANCE", "Reliance Industries"]
+        },
+        "tcs": {
+          "name": "TCS",
+          "keywords": ["TCS", "Tata Consultancy Services"]
+        },
+        "infy": {
+          "name": "Infosys",
+          "keywords": ["INFY", "Infosys"]
+        },
+        "hdfcbank": {
+          "name": "HDFC Bank",
+          "keywords": ["HDFCBANK", "HDFC Bank"]
+        },
+        "icicibank": {
+          "name": "ICICI Bank",
+          "keywords": ["ICICIBANK", "ICICI Bank"]
+        },
+        "sbin": {
+          "name": "State Bank of India",
+          "keywords": ["SBIN", "SBI", "State Bank of India"]
+        },
+        "itc": {
+          "name": "ITC",
+          "keywords": ["ITC", "ITC Ltd"]
+        },
+        "lt": {
+          "name": "Larsen & Toubro",
+          "keywords": ["LT", "L&T", "Larsen & Toubro"]
+        },
+        "bharti": {
+          "name": "Bharti Airtel",
+          "keywords": ["BHARTIARTL", "Airtel", "Bharti Airtel"]
+        }
+      }
+    },
+    "commodities": {
+      "label": "Commodities",
+      "subreddits": [
+        "commodities",
+        "investing",
+        "stocks",
+        "wallstreetbets",
+        "energy",
+        "gold",
+        "Silverbugs"
+      ],
+      "assets": {
+        "crude": {
+          "name": "Crude Oil",
+          "keywords": ["crude oil", "crude", "WTI", "CL=F", "USO", "oil"]
+        },
+        "brent": {
+          "name": "Brent",
+          "keywords": ["Brent", "BZ=F"]
+        },
+        "natgas": {
+          "name": "Natural Gas",
+          "keywords": ["natural gas", "nat gas", "NG=F", "UNG"]
+        },
+        "gold": {
+          "name": "Gold",
+          "keywords": ["gold", "XAU", "GC=F", "GLD"]
+        },
+        "silver": {
+          "name": "Silver",
+          "keywords": ["silver", "XAG", "SI=F", "SLV"]
+        },
+        "copper": {
+          "name": "Copper",
+          "keywords": ["copper", "HG=F"]
+        },
+        "aluminum": {
+          "name": "Aluminum",
+          "keywords": ["aluminum", "aluminium"]
+        },
+        "steel": {
+          "name": "Steel / Iron Ore",
+          "keywords": ["steel", "iron ore", "rebar"]
+        },
+        "lithium": {
+          "name": "Lithium",
+          "keywords": ["lithium", "LIT", "LIT ETF"]
+        }
+      }
+    }
+  }
+}

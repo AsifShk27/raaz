@@ -1,0 +1,14 @@
+{
+  "learner_name": "<name>",
+  "exam_code": "SAP-C02",
+  "target_exam_date": "2026-05-15",
+  "weekly_hours": 8.0,
+  "confidence": {
+    "domain-1": 2,
+    "domain-2": 2,
+    "domain-3": 2,
+    "domain-4": 2
+  },
+  "focus_areas": [],
+  "history": []
+}

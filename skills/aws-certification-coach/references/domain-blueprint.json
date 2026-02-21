@@ -1,0 +1,74 @@
+{
+  "exam": {
+    "code": "SAP-C02",
+    "name": "AWS Certified Solutions Architect - Professional",
+    "last_verified_utc": "2026-02-10T00:00:00Z",
+    "duration_minutes": 180,
+    "question_types": [
+      "multiple choice",
+      "multiple response"
+    ],
+    "total_questions": 75,
+    "scored_questions": 65,
+    "unscored_questions": 10,
+    "passing_scaled_score": 750,
+    "cost_usd": 300,
+    "retake_wait_if_fail_days": 14,
+    "retake_wait_after_pass": "2 years",
+    "official_sources": [
+      "https://docs.aws.amazon.com/aws-certification/latest/examguides/solutions-architect-professional-02.html",
+      "https://aws.amazon.com/certification/certified-solutions-architect-professional/",
+      "https://aws.amazon.com/certification/policies/after-testing/"
+    ]
+  },
+  "domains": [
+    {
+      "id": "domain-1",
+      "title": "Design Solutions for Organizational Complexity",
+      "weight_pct": 26,
+      "tasks": [
+        "Task 1.1: Architect network connectivity strategies.",
+        "Task 1.2: Prescribe security controls.",
+        "Task 1.3: Design reliable and resilient architectures.",
+        "Task 1.4: Design a multi-account AWS environment.",
+        "Task 1.5: Determine cost optimization and visibility strategies."
+      ]
+    },
+    {
+      "id": "domain-2",
+      "title": "Design for New Solutions",
+      "weight_pct": 29,
+      "tasks": [
+        "Task 2.1: Design a deployment strategy to meet business requirements.",
+        "Task 2.2: Design a solution to ensure business continuity.",
+        "Task 2.3: Determine security controls based on requirements.",
+        "Task 2.4: Design a strategy to meet reliability requirements.",
+        "Task 2.5: Design a solution to meet performance objectives.",
+        "Task 2.6: Determine a cost optimization strategy to meet solution goals and objectives."
+      ]
+    },
+    {
+      "id": "domain-3",
+      "title": "Continuous Improvement for Existing Solutions",
+      "weight_pct": 25,
+      "tasks": [
+        "Task 3.1: Determine a strategy to improve overall operational excellence.",
+        "Task 3.2: Determine a strategy to improve security.",
+        "Task 3.3: Determine a strategy to improve performance.",
+        "Task 3.4: Determine a strategy to improve reliability.",
+        "Task 3.5: Identify opportunities for cost optimizations."
+      ]
+    },
+    {
+      "id": "domain-4",
+      "title": "Accelerate Workload Migration and Modernization",
+      "weight_pct": 20,
+      "tasks": [
+        "Task 4.1: Select existing workloads and processes for potential migration.",
+        "Task 4.2: Determine the optimal migration approach for existing workloads.",
+        "Task 4.3: Determine a new architecture for existing workloads.",
+        "Task 4.4: Determine opportunities for modernization and enhancements."
+      ]
+    }
+  ]
+}

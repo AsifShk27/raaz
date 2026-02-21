@@ -1,0 +1,1 @@
+../voice-to-text-local/scripts/transcribe.sh

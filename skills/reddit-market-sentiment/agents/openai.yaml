@@ -1,0 +1,3 @@
+interface:
+  display_name: "Reddit Market Sentiment"
+  short_description: "Track Reddit sentiment for US/India stocks and commodities"

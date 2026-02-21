@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEFAULT_RUNTIME_ROOT="/home/shkas/projects/raaz/.runtime"
+if [[ ! -x "$DEFAULT_RUNTIME_ROOT/bin/agentctl" ]]; then
+  DEFAULT_RUNTIME_ROOT="/home/shkas/trading-agent-runtime"
+fi
+
+RUNTIME_ROOT="${AGENT_RUNTIME_ROOT:-$DEFAULT_RUNTIME_ROOT}"
+AGENTCTL="${RUNTIME_ROOT}/bin/agentctl"
+
+if [[ ! -x "$AGENTCTL" ]]; then
+  echo "agentctl not found at $AGENTCTL" >&2
+  exit 1
+fi
+
+if [[ "${AGENT_RUNTIME_BACKEND:-}" == "file" && "${TRPG_ALLOW_FILE_BACKEND:-0}" != "1" ]]; then
+  export AGENT_RUNTIME_BACKEND="postgres"
+else
+  export AGENT_RUNTIME_BACKEND="${AGENT_RUNTIME_BACKEND:-postgres}"
+fi
+
+if [[ "${TRPG_ALLOW_FILE_BACKEND:-0}" == "1" && "${AGENT_RUNTIME_BACKEND}" == "file" ]]; then
+  export AGENT_ALLOW_FILE_BACKEND="1"
+fi
+
+cmd="${1:-}"
+if [[ "$cmd" == "queue" ]]; then
+  for arg in "$@"; do
+    if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+      exec "$AGENTCTL" "$@"
+    fi
+  done
+  if [[ "${AGENT_COLLAB_EXECUTION_MODE:-}" == "collab" && "${TRPG_ALLOW_MANUAL_QUEUE:-0}" != "1" ]]; then
+    echo "Blocked: manual 'trpg queue' while AGENT_COLLAB_EXECUTION_MODE=collab." >&2
+    echo "Use collab-session.sh staged workflow (start/status/await)." >&2
+    echo "Override intentionally with TRPG_ALLOW_MANUAL_QUEUE=1." >&2
+    exit 2
+  fi
+fi
+
+exec "$AGENTCTL" "$@"

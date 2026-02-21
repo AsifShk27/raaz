@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Debug CLI"
+  short_description: "Capture browser debug artifacts fast."
+  default_prompt: "Use $frontend-debug-cli to collect logs, HAR, trace, and screenshots for a URL."

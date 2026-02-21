@@ -1,0 +1,1 @@
+/home/shkas/projects/raaz/skills/market-digest/scripts/hn-digest.sh
