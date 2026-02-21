@@ -1,0 +1,192 @@
+# Raaz Memory Index
+
+Canonical index for Raaz memory entries using meaningful, topic-based filenames.
+
+## Policies
+
+- Add behavior/policy updates under `policies/<policy-slug>.md`.
+- `policies/` is active for durable policy updates.
+- `policies/trading-platform-canonical-memory-policy.md` defines canonical trading memory ownership and boundary rules (trading-only in trading memory; non-trading in owning domains).
+- `policies/codex-shared-skills-sources-policy.md` defines shared skill source requirements for all five codex collab workspaces.
+- `policies/openclaw-raaz-collab-command-guidance-policy.md` defines collab-first command usage policy.
+- `policies/openclaw-raaz-collab-command-guidance-policy.md` also defines collab-intake template ownership for worker startup guidance (tmux/WhatsApp aligned).
+- `policies/trusted-whatsapp-exec-approval-policy.md` defines non-interactive trusted WhatsApp execution policy for approved commands/skills.
+- `policies/whatsapp-lid-allowlist-triage-policy.md` defines WhatsApp non-response triage order for allowlist-gated LID sender resolution failures.
+- `policies/qmd-memory-latency-and-warm-start-policy.md` defines low-latency QMD memory behavior and warm-start expectations for Raaz.
+- `policies/trading-runtime-six-worker-no-planner-policy.md` defines six-worker runtime shape (5 Codex + 1 Claude, no dedicated planner).
+- `policies/openclaw-gateway-systemd-cron-reliability-policy.md` defines systemd ownership and lifecycle validation requirements for reliable cron execution.
+- `policies/qmd-managed-runtime-and-directml-embeddings-policy.md` defines managed QMD runtime usage and DirectML endpoint as the production embeddings source for AMD path.
+- `policies/qmd-embeddings-default-model-and-pooling-policy.md` defines the active default model/pooling contract (`bge-base` + `cls`) for DirectML-backed QMD embeddings.
+- `policies/worker-availability-preflight-routing-policy.md` defines per-worker usage preflight gating before queue claim routing.
+- `policies/worker-availability-secondary-window-quota-gate-policy.md` extends worker availability gating to all usage windows (`primary`/`secondary`/etc.) so long-window quota exhaustion cannot claim staged-collab work.
+- `policies/worker-availability-claude-cli-probe-default-disable-and-safe-timeout-policy.md` defines safe defaults and timeout cleanup requirements for Claude CLI availability probes.
+- `policies/claude-probe-leak-guard-monitoring-policy.md` defines always-on leak monitoring and default auto-kill containment for Claude CodexBar probe signatures.
+- `policies/chatterbox-tts-directml-fallback-policy.md` defines Chatterbox runtime behavior (CPU default and DirectML fallback).
+- `policies/active-tts-provider-routing-policy.md` defines active-provider TTS routing for storytelling/manual voice-note workflows via `audio.reply.command`.
+- `policies/active-tts-inactive-server-autostop-policy.md` defines default auto-stop behavior for inactive Chatterbox warm server when active provider is not Chatterbox.
+- `policies/trading-runtime-postgres-backend-and-skill-policy.md` defines postgres-default trading runtime operation and skill-wrapper usage with file-backend rollback semantics.
+- `policies/trading-platform-deploy-default-concurrency-policy.md` defines safe default deploy/install concurrency (3 workers) for trading-platform skill flows on shared WSL runtime.
+- `policies/trading-platform-deploy-skill-first-install-policy.md` requires `tpdeploy install` as the default full install/redeploy path when the deploy skill is available.
+- `policies/tpdeploy-zot-preflight-policy.md` requires automatic Zot preflight on tpdeploy push/rebuild paths when targeting `localhost:30500`.
+- `policies/trading-image-push-zot-preflight-policy.md` extends the same Zot preflight requirement to CI and installer image-push helper tooling.
+- `policies/trading-platform-ops-skills-and-cli-baseline-policy.md` defines the extended trading-platform ops skill suite and CLI baseline contract for Raaz/collab workers.
+- `policies/soul-personality-and-response-style-policy.md` defines Raaz personality/tone rules (direct, brief, opinionated, and non-corporate by default).
+- `policies/openclaw-collab-skill-resolution-and-auth-failure-reconnect-policy.md` defines missing-skill-path fallback behavior, auth-failure reconnect suppression, and Telegram command-cap enforcement for stable collab control-plane operation.
+- `policies/collab-skill-system-validation-testing-rollback-risk-policy.md` defines risk-first top-5 hardening priorities for collab skill validation, testing gates, manual-fanout controls, and rollback discipline.
+- `policies/collab-skill-system-architecture-and-implementation-strategy-policy.md` defines stream-2 architecture priorities for policy unification, dynamic quorum orchestration, preflight gating, manual-fanout enforcement, and skill/artifact contract hardening.
+- `policies/collab-skill-system-agree-stage-execution-split-policy.md` defines agree-stage consensus priorities, dependency-ordered execution split, and rollback/validation gate policy for the 2026-02-12 collab review session.
+- `policies/collab-skill-system-runtime-gates-preflight-quorum-fanout-policy.md` defines stream-1 execute runtime controls for preflight-first admission, dynamic quorum lane selection, and manual-fanout ack/audit requirements.
+- `policies/openclaw-sandbox-setupcommand-readonly-rootfs-policy.md` defines startup setup constraints for read-only sandbox lanes (no apt bootstrap in those paths).
+- `policies/openclaw-platform-dev-codex-lane-model-chain-and-sandbox-policy.md` keeps Platform Dev Codex lanes in Codex-family fallback path and codifies lane sandbox override requirements for read-only bootstrap failures.
+- `policies/raaz-skill-model-inheritance-and-claude-hardpin-removal-policy.md` enforces skill model inheritance from active agent defaults and removes stale Claude Opus hard-pins from live Raaz runtime config.
+- `policies/raaz-default-model-codex53-xhigh-policy.md` is a superseded interim emergency policy from MiniMax cooldown triage.
+- `policies/raaz-kimi-default-and-codex-worker-separation-policy.md` is the active model policy: Raaz on Kimi K2.5; codex worker lanes on GPT-5.3 Codex.
+- `policies/codex-workers-xhigh-thinking-policy.md` is the active reasoning-depth policy: codex worker lanes default to `xhigh` for collab and worker-session execution.
+- `policies/tmux-collab-interactive-bootstrap-and-safe-dispatch-policy.md` now also enforces explicit Codex tmux intent preservation (no auto Claude fallback) and stale-status rejection for live pane reporting.
+- `policies/tmux-collab-six-pane-postgres-standard-policy.md` defines six-lane tmux collab default alignment with postgres runtime slot1-slot6 topology.
+- `policies/codex-collab-full-approval-and-path-trust-alignment-policy.md` enforces full-approval Codex startup command preservation in runtime-profile collab paths and trusted path-casing alignment to avoid workspace-trust gating.
+- `policies/collab-runtime-staged-session-and-pane-idle-claim-policy.md` defines staged postgres collab session commands and pane-idle + availability-aware auto-claim requirements.
+- `policies/collab-runtime-preflight-quorum-and-fanout-gating-policy.md` defines fail-closed preflight admission, dynamic lane quorum controls, and auditable manual-fanout gating for collab runtime execution.
+- `policies/collab-verify-failure-loopback-policy.md` defines bounded execute->verify loopback behavior when strict staged sessions fail at verify stage.
+- `policies/collab-runtime-staged-v2-research-first-active-agent-aware-policy.md` defines research-first staged-v2 default, eligible-participant stream caps, deterministic artifact roots, and full-scope verify loopback baseline.
+- `policies/collab-runtime-cli-wrapper-mixin-import-parity-and-smoke-path-policy.md` requires per-mixin import parity and runtime smoke checks for wrapper poll/notice/winsize paths after modular refactors.
+- `policies/paste-submit-validation-staged-safety-gates-policy.md` defines two-phase paste-submit safety and runtime-root parity requirements for shared `.runtime` prompt delivery behavior.
+- `policies/collab-staged-failure-propagation-and-consensus-default-policy.md` defines strict staged failure semantics, participants enforcement, consensus-on defaults, and runtime-root parity requirements.
+- `policies/reddit-market-sentiment-chat-top-articles-link-oneliner-policy.md` defines link-first + one-liner chat rendering for reddit-market-sentiment top-article sections.
+- `policies/reddit-shared-cli-core-single-source-policy.md` defines single-source Reddit fetch/auth ownership in `skills/reddit-cli/lib/reddit_api.py` and `--auth auto` default expectations.
+
+## Operations
+
+- Existing operational notes are currently in legacy flat files in this folder.
+- New entries should use semantic names (not date-only names).
+- `changes/memory-md-bootstrap-compaction-and-pointerized-index.md` records the 2026-02-20 MEMORY bootstrap compaction, pointerization strategy, and validation evidence.
+- `changes/memory-md-pre-compaction-verbatim-snapshot.md` preserves the full pre-compaction `MEMORY.md` content verbatim so no historical details are lost.
+- `market-digest-rss-parser-and-readall-noninteractive-fix.md` records the Feb 10, 2026 fix for empty RSS headlines in digest output and non-interactive `blogwatcher read-all` handling.
+- `market-digest-tech-news-links-and-snapshot-hardening.md` records the Feb 10, 2026 update that adds a dedicated tech-news section, enforces URL inclusion, and stamps digest freshness with an IST snapshot time.
+- `market-digest-verbatim-link-delivery-contract.md` records the Feb 10, 2026 delivery hardening to preserve clickable raw URLs end-to-end (skill contract + cron prompt contract + plain `Link:` formatting).
+- `market-digest-cron-model-unpinned-for-raaz-default-inheritance.md` records the Feb 10, 2026 change removing digest cron model pinning so jobs inherit Raaz default runtime model.
+- `changes/raaz-cron-agent-model-unpin-and-doctor-followup.md` records the Feb 11, 2026 follow-up confirming `doctor` scope and removing remaining Raaz cron model pins by migration.
+- `changes/fitness-coach-cron-model-unpinned-for-default-inheritance.md` records the Feb 11, 2026 fitness-coach cron model unpin migration and validation.
+- `incidents/fitness-coach-minimax-plan-incompatibility-cron-failures.md` records Feb 15 repeated `MiniMax-M2.1` plan-incompatibility cron failures for `fitness-coach`.
+- `decisions/fitness-coach-model-inheritance-and-subtle-metabolic-guidance-policy.md` records the accepted policy to keep `fitness-coach` on Raaz default-model inheritance and enforce subtle non-explicit coaching language.
+- `changes/fitness-coach-kimi-routing-and-non-explicit-metabolic-prompt-hardening.md` records runtime routing correction to Kimi inheritance plus heartbeat/cron prompt hardening.
+- `incidents/fitness-coach-near-run-message-repetition-risk.md` records repetition risk from prompt-only generation without persisted tip-selection state.
+- `decisions/fitness-coach-stateful-tip-rotation-and-script-first-generation-policy.md` records the decision to use script-first stateful tip rotation for reliable anti-repetition.
+- `changes/fitness-coach-stateful-anti-repetition-generator-and-cron-command-integration.md` records implementation of the local generator, tests, and cron integration.
+- `decisions/cron-overdue-jobs-run-on-startup-by-design.md` records the Feb 14, 2026 decision that overdue recurring jobs executing on startup is expected catch-up behavior.
+- `incidents/reddit-sentiment-cron-file-read-race-and-enoent.md` records the Feb 14, 2026 Reddit sentiment ENOENT incident caused by file-read race in cron orchestration.
+- `changes/reddit-and-market-cron-delivery-and-runtime-hardening.md` records the Feb 14, 2026 hardening update for Reddit and market cron jobs (stdout execution flow + explicit delivery targets + reduced runtime variance).
+- `decisions/reddit-cron-skill-output-parity-via-direct-delivery.md` records the Feb 14, 2026 decision to enforce Reddit cron/manual output parity by switching to direct skill delivery and removing announce rewrite.
+- `changes/reddit-cron-direct-delivery-no-announce-and-wrapper-scripts.md` records wrapper-script rollout, direct WhatsApp delivery, and process-follow-up prompt hardening for Reddit cron jobs.
+- `changes/reddit-market-sentiment-renderer-group-coverage-and-explicit-links.md` records renderer/pipeline hardening so requested groups remain visible, fallback coverage is explicit on strict no-match windows, and top-post URLs stay plain-text visible.
+- `decisions/reddit-market-sentiment-group-coverage-and-link-preservation-policy.md` records the output contract requiring deterministic group coverage, explicit URL visibility, and annotated relaxed-filter fallback for strict-empty groups.
+- `incidents/reddit-market-sentiment-chat-output-missing-groups-and-links.md` records the resolved chat-output incident and follow-up strict-filter false-negative mitigation for missing requested groups.
+- `decisions/reddit-market-sentiment-whatsapp-compact-table-and-shortlink-contract.md` records the accepted contract to use chat-friendly compact tables, canonical top-post dedupe, and short `redd.it` links.
+- `incidents/reddit-market-sentiment-whatsapp-readability-and-duplicate-link-noise.md` records the resolved readability/duplicate-link-noise incident observed in WhatsApp sentiment output.
+- `changes/reddit-market-sentiment-whatsapp-compact-table-shortlink-and-dedupe-hardening.md` records renderer/test implementation for compact code-fenced tables, stronger dedupe-key normalization, and short-link rendering.
+- `incidents/reddit-market-sentiment-top-post-table-redundant-asset-detail-noise.md` records the resolved redundancy/noise incident where top-post tables repeated asset detail in chat output.
+- `decisions/reddit-market-sentiment-chat-top-articles-link-and-oneliner-contract.md` records the accepted output contract to render top articles as short-link + one-line explainers.
+- `changes/reddit-market-sentiment-top-articles-link-oneliner-renderer-update.md` records renderer/test changes that replaced top-post table output with numbered short-link one-liners.
+- `incidents/reddit-trend-scout-cron-403-and-no-reply-sentinel-confusion.md` records the Feb 15, 2026 incident where trend-scout cron failed with Reddit HTTP 403 while `NO_REPLY`/Discord metrics remained benign signals.
+- `decisions/reddit-trend-scout-403-triage-priority-and-no-reply-interpretation-policy.md` records the triage-priority decision to treat Reddit 403 as primary fault and `NO_REPLY` as expected duplicate-announcement suppression.
+- `changes/reddit-trend-scout-403-investigation-and-runtime-disambiguation.md` records investigation evidence and cross-signal disambiguation with no runtime mutation.
+- `decisions/reddit-trend-scout-transient-fetch-failure-nonfatal-and-retry-policy.md` records the resilience policy to keep per-subreddit fetch failures non-fatal by default and retry transient source blocks in cron wrappers.
+- `changes/reddit-trend-scout-cron-transient-403-resilience-hardening.md` records script + wrapper implementation for transient 403 resilience, warning-rich output, and degraded-success handling.
+- `incidents/reddit-market-sentiment-cron-403-warning-spam-and-source-degraded-output.md` records the Feb 15, 2026 sentiment incident where 403 fetch blocks leaked warning spam/HTML fragments into chat output and obscured degraded-source runs.
+- `decisions/reddit-market-sentiment-transient-fetch-resilience-and-warning-visibility-policy.md` records accepted sentiment policy for non-fatal transient fetch handling, strict diagnostic mode, concise warning visibility, and cron degraded-success behavior.
+- `changes/reddit-market-sentiment-transient-403-resilience-hardening.md` records runtime+wrapper hardening (compact HTTP bodies, structured fetch warnings, strict-fetch option, auth auto-selection, retry/backoff, and transient notice path).
+- `incidents/reddit-public-endpoint-403-source-degraded-and-symbol-omission.md` records the 2026-02-21 incident where public Reddit endpoint failures (403) caused source-degraded outputs and symbol rows were not visible in zero-match groups.
+- `decisions/reddit-oauth-required-for-reliable-fetch-and-no-coverage-must-show-configured-symbols.md` records the policy to treat OAuth as reliability baseline and always show configured symbols in no-coverage sentiment groups.
+- `changes/reddit-market-sentiment-symbol-visibility-on-source-degraded-runs-and-trend-wrapper-clarity.md` records implementation of configured-symbol visibility under zero coverage and explicit source-degraded trend wrapper messaging.
+- `changes/reddit-cli-shared-core-rollout-and-skill-dedup-refactor.md` records rollout of the dedicated shared `reddit-cli` core and dedup refactor across sentiment/trend skills.
+- `changes/reddit-cron-preflight-gate-via-shared-reddit-cli-check.md` records cron hardening that gates both sentiment and trend jobs through `reddit_cli.py check` before scan execution.
+- `decisions/reddit-skills-must-use-shared-reddit-cli-core-and-auto-oauth-policy.md` records the accepted single-source Reddit integration policy and `--auth auto` default.
+- `incidents/urllib-based-reddit-fetch-caused-403-blocks-in-cli-and-skills.md` records the transport-layer 403 issue and the `requests`-first remediation.
+- `changes/collab-intake-tmux-codex-intent-guardrails-and-live-spawn.md` records Codex tmux intent-preservation guardrails and a validated live collab-intake spawn on the persistent socket.
+- `changes/collab-intake-queue-auto-claim-default-with-tmux-watch-mode.md` records the mode split fix: collab-intake defaults to queued auto-claim; tmux is watch/attach unless manual fanout is explicitly requested.
+- `changes/postgres-collab-staged-orchestrator-and-agentctl-collab-commands.md` records staged postgres orchestration commands (`collab-start/status/await`), intake integration, and skill wrapper addition.
+- `incidents/collab-runtime-overfanout-under-availability-mismatch-and-missing-research-stage.md` records the overfanout + missing-stage root cause that motivated staged-v2 and participant-aware stream caps.
+- `changes/collab-runtime-staged-v2-research-analysis-artifact-manifest-and-loopback-implementation.md` records runtime implementation and validation evidence for staged-v2, artifact contracts, and loopback scope controls.
+- `incidents/collab-runtime-context-window-burn-from-autoclaim-task-prompt-bloat.md` records rapid worker context burn caused by oversized auto-claimed prompt payloads in standard pg auto-worker mode.
+- `decisions/collab-runtime-pg-autoworker-task-prompt-budgeting-policy.md` records the decision to enforce bounded prompt budgets with compact metadata in pg auto-worker task injection.
+- `changes/collab-runtime-pg-autoworker-prompt-compaction-and-budget-controls.md` records implementation of compact prompt construction, env-tunable budgets, regression tests, and follow-up runtime-root parity sync for `pg_auto_worker`/`pg_task_prompt`.
+- `decisions/collab-runtime-pg-collab-cli-modularization-and-entrypoint-compatibility-policy.md` records the architecture decision to keep `pg_collab_cli.py` as a stable entrypoint while modularizing internals into sub-500-line files.
+- `changes/collab-runtime-pg-collab-cli-modularization-and-co-research-parser-hardening.md` records the `pg_collab_cli` modular split, compatibility re-export surface, and cooperative-research parser argument hardening.
+- `decisions/collab-runtime-cli-agent-wrapper-modularization-phase2-facade-and-mixin-boundary-policy.md` records the phase-2 wrapper decision to keep a thin facade and move operational logic into focused `core/cli_wrapper` mixins.
+- `changes/collab-runtime-cli-agent-wrapper-phase2-full-modularization-and-compatibility-hardening.md` records the concrete wrapper split, compatibility-preserving facade behavior, and validation evidence.
+- `decisions/collab-runtime-cli-wrapper-mixin-import-parity-and-runtime-smoke-coverage-policy.md` records the decision to enforce per-mixin import parity and runtime smoke coverage after wrapper modularization.
+- `incidents/collab-runtime-cli-wrapper-phase2-missing-mixin-imports-nameerror-regression.md` records the resolved runtime NameError regression from missing mixin imports in phase-2 split files.
+- `changes/collab-runtime-cli-wrapper-phase2-import-parity-runtime-hotfix-and-smoke-validation.md` records the import hotfix and validation evidence for wrapper poll/notice/winsize runtime paths.
+- `decisions/collab-runtime-co-research-completion-guardrails-and-checkpoint-contract-policy.md` records hard completion-time guardrails for cooperative research and mandatory machine-check checkpoint markers.
+- `changes/collab-runtime-co-research-hard-guardrail-enforcement-and-completion-failure-handling.md` records runtime enforcement implementation in hub completion flow plus wrapper/CLI completion-failure handling hardening.
+- `changes/collab-runtime-co-research-task-scoped-finding-metadata-and-response-full-hardening.md` records task-scoped finding metadata propagation and completion payload marker fallback hardening to prevent cooperative guardrail false failures.
+- `decisions/collab-runtime-pg-communication-hub-modularization-and-facade-compatibility-policy.md` records the architecture decision to modularize `pg_communication_hub` internals while preserving the existing facade/API contract.
+- `changes/collab-runtime-pg-communication-hub-modularization-into-mixins-and-facade.md` records the concrete split into `core/pg_hub/` mixins, compatibility exports, and validation evidence.
+- `changes/collab-runtime-orchestrator-skill-artifact-storage-guidance-update.md` records skill-doc alignment for externalized trading collab artifact root (`/mnt/d/Projects/collab`) and explicit `--artifact-root` guidance.
+- `changes/collab-runtime-orchestrator-skill-artifact-output-and-memory-boundary-guidance-update.md` records skill-doc expansion for generated frontend artifact outputs under collab root and explicit canonical-memory-in-repo boundary guidance.
+- `decisions/gog-skill-shared-source-parity-and-v0-11-coverage-policy.md` records the decision to keep `gog` skill copies synchronized and v0.11 feature-complete across Raaz/OpenClaw paths.
+- `changes/gog-skill-v0-11-upgrade-and-openclaw-parity-rebase.md` records implementation of the v0.11 command-surface upgrade and parity rebase across source/runtime skill copies.
+- `decisions/gogcli-runtime-binary-must-track-skill-version-baseline.md` records the decision that Raaz runtime `gogcli` must stay at or above the shared `gog` skill command baseline.
+- `incidents/gogcli-runtime-version-drift-below-skill-surface.md` records the resolved runtime drift incident where installed `gogcli` lagged behind v0.11 skill coverage.
+- `changes/gogcli-runtime-upgrade-to-v0-11-0-and-command-surface-validation.md` records the Homebrew runtime upgrade to `gogcli` v0.11.0 and command-surface verification.
+- `changes/tmux-collab-six-pane-default-and-slot6-runtime-alignment.md` records helper/runtime topology alignment so tmux defaults match six-pane postgres runtime slots.
+- `changes/trading-platform-memory-scope-cleanup-archive-import.md` records import of trading-memory cross-project history into Raaz canonical archive and pointer-stub migration.
+- `decisions/tpdeploy-modular-cli-boundary-and-entrypoint-contract.md` records the decision to split `tpdeploy` into a modular package while preserving the existing command surface.
+- `incidents/tpdeploy-monolith-maintainability-and-testability-risk.md` records the maintainability/testability risk from the prior 1471-line monolithic deploy script and mitigation status.
+- `changes/tpdeploy-cli-modularization-and-regression-tests.md` records implementation details for `tpdeploy_lib` modularization, entrypoint preservation, and regression tests.
+- `migrations/trading-platform-memory-scope-cleanup-2026-02-12/INDEX.md` is the canonical archive index for migrated cross-project entries from trading memory.
+- `incidents/collab-intake-codex-intent-fallback-and-stale-status-drift.md` records the Codex tmux fallback/status-drift incident and remediation evidence.
+- `incidents/tmux-collab-five-lane-default-drift-from-runtime-six-pane-standard.md` records the lane-count drift incident where helper defaults lagged six-pane runtime policy.
+- `incidents/pg-auto-worker-pane-submit-stall-and-idle-claim-gap.md` records pg auto-worker prompt-submit stall and pane-idle claim-gap remediation.
+- `incidents/codexbar-claude-cli-probe-orphan-process-leak.md` records WSL CPU/memory exhaustion caused by orphaned Claude CLI probe processes and fix validation.
+- `changes/worker-availability-claude-probe-hardening-and-timeout-cleanup.md` records runtime hardening (default-disabled Claude probe, timeout process-tree cleanup, and failure backoff).
+- `changes/claude-probe-leak-guard-systemd-timer-and-autokill-monitor.md` records background guard rollout (script + user systemd timer/service + simulation evidence).
+- `changes/claude-probe-leak-guard-whatsapp-alert-channel-and-cooldown.md` records WhatsApp escalation rollout for leak-guard events (service wiring, cooldown throttle, and simulated send-path validation).
+- `changes/claude-probe-leak-guard-edge-triggered-whatsapp-alerts.md` records send-on-new-incident behavior so 30-second checks do not resend alerts for the same open issue.
+- `decisions/claude-probe-leak-guard-whatsapp-alert-routing-and-throttle-policy.md` records accepted routing/throttle decision for leak-guard WhatsApp notifications.
+- `decisions/claude-probe-leak-guard-send-on-new-incident-only-policy.md` records accepted edge-triggered alert semantics (notify only on issue transition).
+- `incidents/claude-probe-leak-guard-alerting-gap-no-whatsapp-escalation.md` records the resolved alerting-gap incident where leak events had no proactive WhatsApp escalation.
+- `incidents/claude-probe-leak-guard-repeated-alert-noise-on-persistent-issue.md` records resolved alert-noise incident for persistent leak states.
+- `changes/wipro-light-discovery-skill-added-local-control-and-configured-setup.md` records rollout of Wipro/Tuya local control commands and setup flow in the Raaz skill.
+- `decisions/wipro-smart-light-local-lan-control-via-tinytuya-policy.md` records the accepted local-LAN control policy (TinyTuya + per-device config contract).
+- `incidents/wipro-light-discovery-skill-could-not-execute-control-without-tuya-keys.md` records the resolved discovery-only capability gap and credential dependency boundary.
+- `chatterbox-tts-rollout-and-directml-findings.md` records the Raaz Chatterbox rollout and DirectML validation findings.
+- `chatterbox-amd-gpu-feasibility-revalidation.md` records the fresh feasibility check and the current AMD GPU constraints for Chatterbox.
+- `chatterbox-turbo-model-persistence-and-autolocal-cache.md` records Turbo default rollout and persistent local snapshot behavior for Chatterbox warm server.
+- `chatterbox-strict-offline-local-only-enforcement.md` records strict offline enforcement (`CHATTERBOX_TTS_LOCAL_ONLY=1`) for both systemd and interactive shell.
+- `aws-certification/INDEX.md` is the dedicated AWS certification coaching memory domain.
+- `aws-certification/aws-sap-c02-coach-skill-rollout.md` records initial rollout of a persistent AWS SAP-C02 certification coach skill.
+- `aws-certification/aws-sap-c02-coach-daily-microlesson-and-model-inheritance.md` records daily WhatsApp microlesson upgrade and cron model inheritance behavior.
+- `aws-certification/aws-sap-c02-adaptive-basics-first-and-answer-checking.md` records adaptive basics-first drills, answer checking, and progress-driven complexity scaling.
+- `aws-certification/aws-sap-c02-raaz-canonical-skill-plugin-ownership-and-autograde-hardening.md` records migration of coach skill/plugin ownership to Raaz repo paths and production hardening of grading idempotency/validation.
+- `aws-certification/aws-sap-c02-autograde-command-name-alignment-and-verification.md` records hyphenated command alignment (`/sap-ans`, `/sap-brief`) with legacy alias retention and deterministic validation evidence.
+- `aws-certification/aws-sap-c02-autograde-command-normalization-for-telegram.md` records normalization to Telegram-safe command names (`/sap_ans`, `/sap_brief`) and fallback plain-text answer handling.
+- `changes/aws-sap-c02-profile-detection-compat-shim-and-list-profiles-command.md` records deterministic profile discovery (`list-profiles`) plus legacy path compatibility shim/symlink for AWS coach runtime.
+- `incidents/aws-sap-c02-whatsapp-profile-false-negative-from-legacy-path-and-missing-list-command.md` records the Feb 11 false "no profile found" incident and root cause.
+- `qmd-managed-skill-guidance-cli-first-alignment.md` records cleanup of managed `qmd` skill instructions to remove stale pseudo-commands and align with CLI/file-first memory retrieval.
+- `incidents/qmd-global-cli-path-caused-embed-crash-and-duplicate-key-errors.md` records root cause where raw npm-global `qmd` path bypassed managed runtime and caused embed instability.
+- `incidents/qmd-vsearch-bun-segfault-under-bge-base-query-expansion.md` records a post-switch vector-search instability case (Bun segfault during `vsearch` expansion) and mitigation status.
+- `changes/qmd-cli-shim-enforces-managed-runtime-and-stabilizes-embed.md` records the `qmd` shim fix that forces managed runtime routing and restores stable embedding runs.
+- `changes/qmd-bge-base-cls-default-switch-and-ict-kb-path-coverage.md` records the default switch to `bge-base` + `cls`, runtime persistence wiring, re-embedding, and ICT KB path coverage updates.
+- `incidents/chatterbox-whatsapp-voice-note-low-volume-root-cause.md` records root cause confirmation that a reported post-rebase voice issue was a loudness/quality profile issue, not synthesis/delivery failure.
+- `changes/chatterbox-voice-note-encoding-normalization-tuning.md` records Chatterbox voice-note encoding updates (normalization + env-driven Opus profile knobs) for better playback consistency.
+- `incidents/chatterbox-warm-server-left-running-after-pocket-switch.md` records the stale warm-server memory overhead after provider switch and the remediation path.
+- `decisions/active-tts-switch-stops-inactive-chatterbox-by-default.md` records the default behavior to stop inactive Chatterbox on gateway start while active provider is Pocket.
+- `changes/pocket-tts-switch-and-inactive-chatterbox-autostop.md` records active-provider switch to Pocket and `openclaw-with-tts.sh` inactive Chatterbox cleanup implementation.
+- `incidents/raaz-post-rebase-workspace-drift-triggered-bootstrap-fallback.md` records post-rebase workspace drift that caused bootstrap-style blank-slate replies on memory fallback.
+- `changes/raaz-post-rebase-workspace-and-qmd-alignment.md` records Raaz workspace/QMD collection alignment and runtime restart validation after rebase.
+- `changes/ict-concepts-knowledge-base-foundational-bootstrap.md` records the foundational ICT concept knowledge-base bootstrap and transcript-backed artifact generation.
+- `changes/ict-concepts-knowledge-base-through-2025-corpus-expansion.md` records full-corpus expansion through 2025, dated inventory merge, and retrieval/tag artifacts.
+- `knowledge/ict-concepts/INDEX.md` is the canonical ICT concept domain index for agent retrieval.
+- `knowledge/ict-concepts/agent-usage-guide.md` defines the query/answer contract for agents using the ICT KB.
+- `knowledge/ict-concepts/through-2025-overview.md` summarizes full through-2025 coverage, year distribution, and concept/series retrieval signals.
+- `changes/clawdhub-spotify-player-skill-installed-in-raaz-workspace.md` records installation/update of `spotify-player` from ClawHub into `/home/shkas/projects/raaz/skills` with validation and rollback reference.
+- `incidents/spotify-control-auth-not-complete-missing-cookies-and-expired-token.md` records why Spotify control remained unavailable after skill install (no browser cookies + expired token) and the required auth completion path.
+- `changes/spotify-player-clientid-alignment-and-token-rotation-preauth.md` records local `spotify_player` client-id alignment and stale token rotation before re-auth.
+- Trading-platform bridge:
+  - `trading-platform.md` points to canonical project memory in `/mnt/d/projects/trading-platform/memory/`.
+
+## Legacy Flat Files
+
+- This folder contains historical files with mixed naming conventions.
+- Do not rename old files for now; add new entries with semantic slugs and update this index.
