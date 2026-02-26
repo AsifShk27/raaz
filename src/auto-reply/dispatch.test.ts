@@ -78,6 +78,8 @@ function createDispatcher(record: string[]): ReplyDispatcher {
     sendFinalReply: () => true,
     getQueuedCounts: () => ({ tool: 0, block: 0, final: 0 }),
     getFailedCounts: () => ({ tool: 0, block: 0, final: 0 }),
+    getAccumulatedText: () => "",
+    hasDispatchedMedia: () => false,
     markComplete: () => {
       record.push("markComplete");
     },
@@ -115,6 +117,8 @@ describe("withReplyDispatcher", () => {
       },
       getQueuedCounts: () => ({ tool: 0, block: 0, final: 0 }),
       getFailedCounts: () => ({ tool: 0, block: 0, final: 0 }),
+      getAccumulatedText: () => "",
+      hasDispatchedMedia: () => false,
       markComplete: () => {
         order.push("markComplete");
       },

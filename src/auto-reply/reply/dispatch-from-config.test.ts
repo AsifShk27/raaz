@@ -275,6 +275,11 @@ const conversationBindingMocks = vi.hoisted(() => {
     resolveConversationBindingThreadIdFromMessage: (ctx: BindingMsgContext) => resolveThreadId(ctx),
   };
 });
+const audioReplyMocks = vi.hoisted(() => ({
+  synthesizeReplyAudio: vi.fn<
+    () => Promise<{ mediaUrls: string[]; audioAsVoice?: boolean } | undefined>
+  >(async () => undefined),
+}));
 const threadInfoMocks = vi.hoisted(() => ({
   parseSessionThreadInfo: vi.fn<
     (sessionKey: string | undefined) => {
@@ -484,6 +489,9 @@ vi.mock("./conversation-binding-input.js", () => ({
   resolveConversationBindingThreadIdFromMessage:
     conversationBindingMocks.resolveConversationBindingThreadIdFromMessage,
 }));
+vi.mock("../audio-reply.js", () => ({
+  synthesizeReplyAudio: audioReplyMocks.synthesizeReplyAudio,
+}));
 vi.mock("../../tts/status-config.js", () => ({
   resolveStatusTtsSnapshot: () => ({
     autoMode: "always",
@@ -544,6 +552,8 @@ function createDispatcher(): ReplyDispatcher {
     waitForIdle: vi.fn(async () => {}),
     getQueuedCounts: vi.fn(() => ({ tool: 0, block: 0, final: 0 })),
     getFailedCounts: vi.fn(() => ({ tool: 0, block: 0, final: 0 })),
+    getAccumulatedText: vi.fn(() => ""),
+    hasDispatchedMedia: vi.fn(() => false),
     markComplete: vi.fn(),
   };
 }
@@ -828,6 +838,8 @@ describe("dispatchReplyFromConfig", () => {
       async (payload: ReplyPayload) => payload,
     );
     runtimePluginMocks.ensureRuntimePluginsLoaded.mockClear();
+    audioReplyMocks.synthesizeReplyAudio.mockReset();
+    audioReplyMocks.synthesizeReplyAudio.mockResolvedValue(undefined);
   });
 
   it("loads runtime plugins before reading inbound hook state", async () => {
@@ -4440,6 +4452,81 @@ describe("sendPolicy deny — suppress delivery, not processing (#53328)", () =>
     expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({
       text: "⚙️ Agent was aborted.",
     });
+  });
+
+  it("synthesizes voice reply for inbound audio when text accumulated and no media dispatched", async () => {
+    setNoAbort();
+    audioReplyMocks.synthesizeReplyAudio.mockResolvedValue({
+      mediaUrls: ["/tmp/reply.ogg"],
+      audioAsVoice: true,
+    });
+    const cfg = {
+      audio: {
+        reply: {
+          command: ["sag", "tts", "--text", "{{ReplyText}}", "--output", "{{ReplyAudioPath}}"],
+        },
+      },
+    } as OpenClawConfig;
+    const dispatcher = createDispatcher();
+    (dispatcher.getAccumulatedText as ReturnType<typeof vi.fn>).mockReturnValue("Hello from text");
+    (dispatcher.hasDispatchedMedia as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    const ctx = buildTestCtx({
+      Provider: "whatsapp",
+      MediaType: "audio/ogg",
+      BodyForCommands: "<media:audio>",
+    });
+
+    await dispatchReplyFromConfig({
+      ctx,
+      cfg,
+      dispatcher,
+      replyResolver: async () => ({ text: "Hello from text" }),
+    });
+
+    expect(audioReplyMocks.synthesizeReplyAudio).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cfg,
+        ctx,
+        replyText: "Hello from text",
+      }),
+    );
+    const finalCalls = (dispatcher.sendFinalReply as ReturnType<typeof vi.fn>).mock.calls;
+    expect(finalCalls.length).toBeGreaterThanOrEqual(2);
+    expect(finalCalls[finalCalls.length - 1]?.[0]).toMatchObject({
+      mediaUrl: "/tmp/reply.ogg",
+      mediaUrls: ["/tmp/reply.ogg"],
+      audioAsVoice: true,
+    });
+  });
+
+  it("skips voice synthesis when dispatcher already sent media", async () => {
+    setNoAbort();
+    const cfg = {
+      audio: {
+        reply: {
+          command: ["sag", "tts", "--text", "{{ReplyText}}", "--output", "{{ReplyAudioPath}}"],
+        },
+      },
+    } as OpenClawConfig;
+    const dispatcher = createDispatcher();
+    (dispatcher.getAccumulatedText as ReturnType<typeof vi.fn>).mockReturnValue(
+      "Already have media",
+    );
+    (dispatcher.hasDispatchedMedia as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    const ctx = buildTestCtx({
+      Provider: "whatsapp",
+      MediaType: "audio/ogg",
+      BodyForCommands: "<media:audio>",
+    });
+
+    await dispatchReplyFromConfig({
+      ctx,
+      cfg,
+      dispatcher,
+      replyResolver: async () => ({ text: "Already have media" }),
+    });
+
+    expect(audioReplyMocks.synthesizeReplyAudio).not.toHaveBeenCalled();
   });
 
   it("skips plugin-bound claim hook under deny and falls through to suppressed agent dispatch", async () => {

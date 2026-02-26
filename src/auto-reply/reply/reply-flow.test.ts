@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { HEARTBEAT_TOKEN, SILENT_REPLY_TOKEN } from "../tokens.js";
-import { createReplyDispatcher } from "./reply-dispatcher.js";
+import { createReplyDispatcher, shouldSkipTextOnlyDelivery } from "./reply-dispatcher.js";
 import { createReplyToModeFilter } from "./reply-threading.js";
 
 describe("createReplyDispatcher", () => {
@@ -248,6 +248,62 @@ describe("createReplyDispatcher", () => {
     expect(deliver).toHaveBeenCalledTimes(2);
 
     vi.useRealTimers();
+  });
+
+  it("tracks accumulated text and media markers for downstream voice synthesis", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const dispatcher = createReplyDispatcher({ deliver });
+
+    dispatcher.sendToolResult({ text: "first" });
+    dispatcher.sendFinalReply({ text: "second", mediaUrl: "file:///tmp/audio.ogg" });
+    await dispatcher.waitForIdle();
+
+    expect(dispatcher.getAccumulatedText()).toContain("first");
+    expect(dispatcher.getAccumulatedText()).toContain("second");
+    expect(dispatcher.hasDispatchedMedia()).toBe(true);
+  });
+
+  it("skips text-only payload delivery when skipTextOnlyDelivery is enabled", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      skipTextOnlyDelivery: true,
+    });
+
+    expect(dispatcher.sendFinalReply({ text: "text only" })).toBe(true);
+    expect(dispatcher.sendFinalReply({ mediaUrl: "file:///tmp/audio.ogg" })).toBe(true);
+    await dispatcher.waitForIdle();
+
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(dispatcher.getAccumulatedText()).toContain("text only");
+    expect(dispatcher.hasDispatchedMedia()).toBe(true);
+  });
+});
+
+describe("shouldSkipTextOnlyDelivery", () => {
+  it("returns true for inbound audio when voiceOnly is enabled", () => {
+    const cfg = {
+      audio: {
+        reply: {
+          command: ["echo", "ok"],
+          voiceOnly: true,
+        },
+      },
+    } as OpenClawConfig;
+    expect(shouldSkipTextOnlyDelivery(cfg, "audio/ogg")).toBe(true);
+  });
+
+  it("returns false when voiceOnly is disabled or media is not audio", () => {
+    const voiceOffCfg = {
+      audio: {
+        reply: {
+          command: ["echo", "ok"],
+          voiceOnly: false,
+        },
+      },
+    } as OpenClawConfig;
+    expect(shouldSkipTextOnlyDelivery(voiceOffCfg, "audio/ogg")).toBe(false);
+    expect(shouldSkipTextOnlyDelivery(voiceOffCfg, "text/plain")).toBe(false);
   });
 });
 

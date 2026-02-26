@@ -75,6 +75,7 @@ import {
 import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
 import type { BlockReplyContext } from "../get-reply-options.types.js";
 import { getReplyPayloadMetadata, type ReplyPayload } from "../reply-payload.js";
+import { synthesizeReplyAudio } from "../audio-reply.js";
 import type { FinalizedMsgContext } from "../templating.js";
 import { normalizeVerboseLevel } from "../thinking.js";
 import { resolveConversationBindingContextFromMessage } from "./conversation-binding-input.js";
@@ -1608,6 +1609,55 @@ export async function dispatchReplyFromConfig(
             `dispatch-from-config: accumulated block TTS failed: ${formatErrorMessage(err)}`,
           );
         }
+      }
+    }
+
+    await dispatcher.waitForIdle();
+
+    // Generic voice reply synthesis: if inbound was audio and we have accumulated
+    // text without media, synthesize voice and send it.
+    const accumulatedText = dispatcher.getAccumulatedText().trim();
+    const shouldSynthesizeVoice =
+      inboundAudio &&
+      accumulatedText &&
+      !dispatcher.hasDispatchedMedia() &&
+      cfg.audio?.reply?.command?.length;
+
+    if (shouldSynthesizeVoice) {
+      const audioReply = await synthesizeReplyAudio({
+        cfg,
+        ctx,
+        replyText: accumulatedText,
+      });
+      if (audioReply?.mediaUrls?.length) {
+        const voicePayload: ReplyPayload = {
+          mediaUrls: audioReply.mediaUrls,
+          mediaUrl: audioReply.mediaUrls[0],
+          audioAsVoice: audioReply.audioAsVoice ?? true,
+        };
+        if (shouldRouteToOriginating && originatingChannel && originatingTo) {
+          const result = await routeReply({
+            payload: voicePayload,
+            channel: originatingChannel,
+            to: originatingTo,
+            sessionKey: ctx.SessionKey,
+            accountId: ctx.AccountId,
+            threadId: ctx.MessageThreadId,
+            cfg,
+          });
+          if (result.ok) {
+            queuedFinal = true;
+            routedFinalCount += 1;
+          } else {
+            logVerbose(
+              `dispatch-from-config: route-reply (voice synth) failed: ${result.error ?? "unknown error"}`,
+            );
+          }
+        } else {
+          queuedFinal = dispatcher.sendFinalReply(voicePayload) || queuedFinal;
+        }
+        await dispatcher.waitForIdle();
+        logVerbose("dispatch-from-config: synthesized voice reply");
       }
     }
 
