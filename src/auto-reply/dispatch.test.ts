@@ -10,6 +10,8 @@ function createDispatcher(record: string[]): ReplyDispatcher {
     sendBlockReply: () => true,
     sendFinalReply: () => true,
     getQueuedCounts: () => ({ tool: 0, block: 0, final: 0 }),
+    getAccumulatedText: () => "",
+    hasDispatchedMedia: () => false,
     markComplete: () => {
       record.push("markComplete");
     },
@@ -71,6 +73,8 @@ describe("withReplyDispatcher", () => {
         return true;
       },
       getQueuedCounts: () => ({ tool: 0, block: 0, final: 0 }),
+      getAccumulatedText: () => "",
+      hasDispatchedMedia: () => false,
       markComplete: () => {
         order.push("markComplete");
       },
@@ -86,6 +90,6 @@ describe("withReplyDispatcher", () => {
       replyResolver: async () => ({ text: "ok" }),
     });
 
-    expect(order).toEqual(["sendFinalReply", "markComplete", "waitForIdle"]);
+    expect(order).toEqual(["sendFinalReply", "waitForIdle", "markComplete", "waitForIdle"]);
   });
 });

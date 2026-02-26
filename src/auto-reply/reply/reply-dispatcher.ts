@@ -1,5 +1,7 @@
 import type { TypingCallbacks } from "../../channels/typing.js";
-import type { HumanDelayConfig } from "../../config/types.js";
+import type { HumanDelayConfig, OpenClawConfig } from "../../config/types.js";
+import { logVerbose } from "../../globals.js";
+import { kindFromMime } from "../../media/mime.js";
 import { sleep } from "../../utils.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { registerDispatcher } from "./dispatcher-registry.js";
@@ -40,6 +42,20 @@ function getHumanDelay(config: HumanDelayConfig | undefined): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+/**
+ * Compute whether to skip text-only delivery for voiceOnly mode.
+ * When the inbound message is audio and voiceOnly is enabled in config,
+ * text replies should be skipped (but still accumulated for voice synthesis).
+ */
+export function shouldSkipTextOnlyDelivery(
+  cfg: OpenClawConfig | undefined,
+  mediaType: string | undefined | null,
+): boolean {
+  const inboundIsAudio = kindFromMime(mediaType) === "audio";
+  const voiceOnlyEnabled = cfg?.audio?.reply?.voiceOnly === true;
+  return inboundIsAudio && voiceOnlyEnabled;
+}
+
 export type ReplyDispatcherOptions = {
   deliver: ReplyDispatchDeliverer;
   responsePrefix?: string;
@@ -55,6 +71,11 @@ export type ReplyDispatcherOptions = {
   onSkip?: ReplyDispatchSkipHandler;
   /** Human-like delay between block replies for natural rhythm. */
   humanDelay?: HumanDelayConfig;
+  /**
+   * When true, skip delivery of text-only payloads (no media).
+   * Text is still accumulated for voice synthesis.
+   */
+  skipTextOnlyDelivery?: boolean;
 };
 
 export type ReplyDispatcherWithTypingOptions = Omit<ReplyDispatcherOptions, "onIdle"> & {
@@ -78,6 +99,10 @@ export type ReplyDispatcher = {
   waitForIdle: () => Promise<void>;
   getQueuedCounts: () => Record<ReplyDispatchKind, number>;
   markComplete: () => void;
+  /** Get accumulated text from all dispatched replies (for voice synthesis). */
+  getAccumulatedText: () => string;
+  /** Check if any reply contained media (to skip duplicate voice synthesis). */
+  hasDispatchedMedia: () => boolean;
 };
 
 type NormalizeReplyPayloadInternalOptions = Pick<
@@ -117,6 +142,10 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
     block: 0,
     final: 0,
   };
+  // Track accumulated text across replies for optional voice synthesis.
+  let accumulatedText = "";
+  // Track whether any dispatched payload carried media.
+  let hasMedia = false;
 
   // Register this dispatcher globally for gateway restart coordination.
   const { unregister } = registerDispatcher({
@@ -135,6 +164,25 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
     if (!normalized) {
       return false;
     }
+
+    // Accumulate text before optional delivery suppression so voice synthesis
+    // still has content in voiceOnly mode.
+    const text = normalized.text?.trim();
+    if (text) {
+      accumulatedText += (accumulatedText ? " " : "") + text;
+    }
+
+    const payloadHasMedia = Boolean(normalized.mediaUrl) || (normalized.mediaUrls?.length ?? 0) > 0;
+    if (payloadHasMedia) {
+      hasMedia = true;
+    }
+
+    if (options.skipTextOnlyDelivery && !payloadHasMedia) {
+      logVerbose(`voiceOnly: skipping text-only ${kind} delivery (text: ${text?.slice(0, 50)}...)`);
+      queuedCounts[kind] += 1;
+      return true;
+    }
+
     queuedCounts[kind] += 1;
     pending += 1;
 
@@ -205,6 +253,8 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
     waitForIdle: () => sendChain,
     getQueuedCounts: () => ({ ...queuedCounts }),
     markComplete,
+    getAccumulatedText: () => accumulatedText,
+    hasDispatchedMedia: () => hasMedia,
   };
 }
 

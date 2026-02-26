@@ -30,6 +30,11 @@ const internalHookMocks = vi.hoisted(() => ({
   createInternalHookEvent: vi.fn(),
   triggerInternalHook: vi.fn(async () => {}),
 }));
+const audioReplyMocks = vi.hoisted(() => ({
+  synthesizeReplyAudio: vi.fn<
+    () => Promise<{ mediaUrls: string[]; audioAsVoice?: boolean } | undefined>
+  >(async () => undefined),
+}));
 
 vi.mock("./route-reply.js", () => ({
   isRoutableChannel: (channel: string | undefined) =>
@@ -64,6 +69,9 @@ vi.mock("../../hooks/internal-hooks.js", () => ({
   createInternalHookEvent: internalHookMocks.createInternalHookEvent,
   triggerInternalHook: internalHookMocks.triggerInternalHook,
 }));
+vi.mock("../audio-reply.js", () => ({
+  synthesizeReplyAudio: audioReplyMocks.synthesizeReplyAudio,
+}));
 
 const { dispatchReplyFromConfig } = await import("./dispatch-from-config.js");
 const { resetInboundDedupe } = await import("./inbound-dedupe.js");
@@ -80,6 +88,8 @@ function createDispatcher(): ReplyDispatcher {
     waitForIdle: vi.fn(async () => {}),
     getQueuedCounts: vi.fn(() => ({ tool: 0, block: 0, final: 0 })),
     markComplete: vi.fn(),
+    getAccumulatedText: vi.fn(() => ""),
+    hasDispatchedMedia: vi.fn(() => false),
   };
 }
 
@@ -116,6 +126,8 @@ describe("dispatchReplyFromConfig", () => {
     internalHookMocks.createInternalHookEvent.mockClear();
     internalHookMocks.createInternalHookEvent.mockImplementation(createInternalHookEventPayload);
     internalHookMocks.triggerInternalHook.mockClear();
+    audioReplyMocks.synthesizeReplyAudio.mockReset();
+    audioReplyMocks.synthesizeReplyAudio.mockResolvedValue(undefined);
   });
   it("does not route when Provider matches OriginatingChannel (even if Surface is missing)", async () => {
     setNoAbort();
@@ -547,6 +559,81 @@ describe("dispatchReplyFromConfig", () => {
         reason: "duplicate",
       }),
     );
+  });
+
+  it("synthesizes voice reply for inbound audio when text accumulated and no media dispatched", async () => {
+    setNoAbort();
+    audioReplyMocks.synthesizeReplyAudio.mockResolvedValue({
+      mediaUrls: ["/tmp/reply.ogg"],
+      audioAsVoice: true,
+    });
+    const cfg = {
+      audio: {
+        reply: {
+          command: ["sag", "tts", "--text", "{{ReplyText}}", "--output", "{{ReplyAudioPath}}"],
+        },
+      },
+    } as OpenClawConfig;
+    const dispatcher = createDispatcher();
+    (dispatcher.getAccumulatedText as ReturnType<typeof vi.fn>).mockReturnValue("Hello from text");
+    (dispatcher.hasDispatchedMedia as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    const ctx = buildTestCtx({
+      Provider: "whatsapp",
+      MediaType: "audio/ogg",
+      BodyForCommands: "<media:audio>",
+    });
+
+    await dispatchReplyFromConfig({
+      ctx,
+      cfg,
+      dispatcher,
+      replyResolver: async () => ({ text: "Hello from text" }),
+    });
+
+    expect(audioReplyMocks.synthesizeReplyAudio).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cfg,
+        ctx,
+        replyText: "Hello from text",
+      }),
+    );
+    const finalCalls = (dispatcher.sendFinalReply as ReturnType<typeof vi.fn>).mock.calls;
+    expect(finalCalls.length).toBeGreaterThanOrEqual(2);
+    expect(finalCalls[finalCalls.length - 1]?.[0]).toMatchObject({
+      mediaUrl: "/tmp/reply.ogg",
+      mediaUrls: ["/tmp/reply.ogg"],
+      audioAsVoice: true,
+    });
+  });
+
+  it("skips voice synthesis when dispatcher already sent media", async () => {
+    setNoAbort();
+    const cfg = {
+      audio: {
+        reply: {
+          command: ["sag", "tts", "--text", "{{ReplyText}}", "--output", "{{ReplyAudioPath}}"],
+        },
+      },
+    } as OpenClawConfig;
+    const dispatcher = createDispatcher();
+    (dispatcher.getAccumulatedText as ReturnType<typeof vi.fn>).mockReturnValue(
+      "Already have media",
+    );
+    (dispatcher.hasDispatchedMedia as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    const ctx = buildTestCtx({
+      Provider: "whatsapp",
+      MediaType: "audio/ogg",
+      BodyForCommands: "<media:audio>",
+    });
+
+    await dispatchReplyFromConfig({
+      ctx,
+      cfg,
+      dispatcher,
+      replyResolver: async () => ({ text: "Already have media" }),
+    });
+
+    expect(audioReplyMocks.synthesizeReplyAudio).not.toHaveBeenCalled();
   });
 
   it("suppresses isReasoning payloads from final replies (WhatsApp channel)", async () => {
