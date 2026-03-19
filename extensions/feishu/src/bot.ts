@@ -1438,6 +1438,8 @@ export async function handleFeishuMessage(params: {
             getQueuedCounts: () => ({ tool: 0, block: 0, final: 0 }),
             getFailedCounts: () => ({ tool: 0, block: 0, final: 0 }),
             markComplete: () => {},
+            getAccumulatedText: () => "",
+            hasDispatchedMedia: () => false,
           };
 
           log(

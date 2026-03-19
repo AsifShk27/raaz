@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { normalizeCronCommandSpec } from "../cron/command.js";
 import { parseAbsoluteTimeMs } from "../cron/parse.js";
 import { coerceFiniteScheduleNumber } from "../cron/schedule.js";
 import { inferLegacyName } from "../cron/service/normalize.js";
@@ -360,6 +361,18 @@ export function normalizeStoredCronJobs(
       }
       if (payloadRecord.kind === "agentTurn" && copyTopLevelAgentTurnFields(raw, payloadRecord)) {
         mutated = true;
+      }
+      if ("command" in payloadRecord) {
+        const normalizedCommand = normalizeCronCommandSpec(payloadRecord.command);
+        if (normalizedCommand) {
+          if (JSON.stringify(payloadRecord.command) !== JSON.stringify(normalizedCommand)) {
+            payloadRecord.command = normalizedCommand;
+            mutated = true;
+          }
+        } else {
+          delete payloadRecord.command;
+          mutated = true;
+        }
       }
     }
 

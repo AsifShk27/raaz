@@ -145,6 +145,12 @@ export type CronFailureAlert = {
   accountId?: string;
 };
 
+export type CronCommandSpec = {
+  argv: [string, ...string[]];
+  cwd?: string;
+  env?: Record<string, string>;
+};
+
 export type CronPayload = { kind: "systemEvent"; text: string } | CronAgentTurnPayload;
 
 export type CronPayloadPatch = { kind: "systemEvent"; text?: string } | CronAgentTurnPayloadPatch;
@@ -164,6 +170,11 @@ type CronAgentTurnPayloadFields = {
   lightContext?: boolean;
   /** Optional tool allow-list; when set, only these tools are sent to the model. */
   toolsAllow?: string[];
+  /**
+   * Optional deterministic command execution path for cron runs that must
+   * avoid model/tool-call variability.
+   */
+  command?: CronCommandSpec;
 };
 
 type CronAgentTurnPayload = {

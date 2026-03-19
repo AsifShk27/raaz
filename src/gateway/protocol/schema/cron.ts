@@ -1,6 +1,15 @@
 import { Type, type TSchema } from "typebox";
 import { NonEmptyString } from "./primitives.js";
 
+const CronCommandSchema = Type.Object(
+  {
+    argv: Type.Array(NonEmptyString, { minItems: 1 }),
+    cwd: Type.Optional(NonEmptyString),
+    env: Type.Optional(Type.Record(NonEmptyString, Type.String())),
+  },
+  { additionalProperties: false },
+);
+
 function cronAgentTurnPayloadSchema(params: { message: TSchema; toolsAllow: TSchema }) {
   return Type.Object(
     {
@@ -13,6 +22,7 @@ function cronAgentTurnPayloadSchema(params: { message: TSchema; toolsAllow: TSch
       allowUnsafeExternalContent: Type.Optional(Type.Boolean()),
       lightContext: Type.Optional(Type.Boolean()),
       toolsAllow: Type.Optional(params.toolsAllow),
+      command: Type.Optional(CronCommandSchema),
     },
     { additionalProperties: false },
   );

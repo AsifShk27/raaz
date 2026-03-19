@@ -11,6 +11,7 @@ import {
   parseDeliveryInput,
   parseOptionalField,
 } from "./delivery-field-schemas.js";
+import { normalizeCronCommandSpec } from "./command.js";
 import { parseAbsoluteTimeMs } from "./parse.js";
 import { inferLegacyName } from "./service/normalize.js";
 import { assertSafeCronSessionTargetId } from "./session-target.js";
@@ -41,7 +42,8 @@ function hasAgentTurnPayloadHint(payload: UnknownRecord) {
     hasTrimmedStringValue(payload.thinking) ||
     typeof payload.timeoutSeconds === "number" ||
     typeof payload.lightContext === "boolean" ||
-    typeof payload.allowUnsafeExternalContent === "boolean"
+    typeof payload.allowUnsafeExternalContent === "boolean" ||
+    normalizeCronCommandSpec(payload.command) !== undefined
   );
 }
 
@@ -252,8 +254,17 @@ function coercePayload(payload: UnknownRecord) {
     delete next.lightContext;
     delete next.allowUnsafeExternalContent;
     delete next.toolsAllow;
+    delete next.command;
   } else if (next.kind === "agentTurn") {
     delete next.text;
+    if ("command" in next) {
+      const normalized = normalizeCronCommandSpec(next.command);
+      if (normalized) {
+        next.command = normalized;
+      } else {
+        delete next.command;
+      }
+    }
   }
   if ("deliver" in next) {
     delete next.deliver;
@@ -405,6 +416,12 @@ function copyTopLevelAgentTurnFields(next: UnknownRecord, payload: UnknownRecord
   ) {
     payload.allowUnsafeExternalContent = next.allowUnsafeExternalContent;
   }
+  if (!("command" in payload) && "command" in next) {
+    const command = normalizeCronCommandSpec(next.command);
+    if (command) {
+      payload.command = command;
+    }
+  }
 }
 
 function stripLegacyTopLevelFields(next: UnknownRecord) {
@@ -427,6 +444,7 @@ function stripLegacyTopLevelFields(next: UnknownRecord) {
   delete next.staggerMs;
   delete next.session;
   delete next.tools;
+  delete next.command;
   delete next.deliver;
   delete next.channel;
   delete next.to;

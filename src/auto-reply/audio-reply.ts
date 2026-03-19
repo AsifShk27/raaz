@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import type { OpenClawConfig } from "../config/config.js";
 import { logVerbose, shouldLogVerbose } from "../globals.js";
+import { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
 import { splitMediaFromOutput } from "../media/parse.js";
 import { runExec } from "../process/exec.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
@@ -57,8 +57,11 @@ export async function synthesizeReplyAudio(params: {
 
   const timeoutMs = Math.max((replyConfig.timeoutSeconds ?? 45) * 1000, 1_000);
   const id = crypto.randomUUID();
-  const textPath = path.join(os.tmpdir(), `openclaw-reply-${id}.txt`);
-  const audioPath = path.join(os.tmpdir(), `openclaw-reply-${id}.ogg`);
+  // Keep synthesized media under OpenClaw's trusted temp root so media send-path
+  // allowlists work consistently for both service and foreground runs.
+  const tmpRoot = resolvePreferredOpenClawTmpDir();
+  const textPath = path.join(tmpRoot, `openclaw-reply-${id}.txt`);
+  const audioPath = path.join(tmpRoot, `openclaw-reply-${id}.ogg`);
 
   try {
     await fs.writeFile(textPath, trimmedText, "utf8");

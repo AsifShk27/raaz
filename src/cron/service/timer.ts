@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { resolveFailoverReasonFromError } from "../../agents/failover-error.js";
 import type { CronConfig, CronRetryOn } from "../../config/types.cron.js";
 import type { HeartbeatRunResult } from "../../infra/heartbeat-wake.js";
@@ -12,6 +13,7 @@ import {
   createRunningTaskRun,
   failTaskRunByRunId,
 } from "../../tasks/detached-task-runtime.js";
+import { truncateUtf16Safe } from "../../utils.js";
 import { clearCronJobActive, markCronJobActive } from "../active-jobs.js";
 import { resolveCronDeliveryPlan } from "../delivery-plan.js";
 import {
@@ -61,6 +63,9 @@ const CRON_TIMEOUT_CLEANUP_GUARD_MS = 20_000;
  * but always breaks an infinite re-trigger cycle.  (See #17821)
  */
 const MIN_REFIRE_GAP_MS = 2_000;
+const COMMAND_OUTPUT_CAPTURE_MAX_CHARS = 16_000;
+const COMMAND_SUMMARY_MAX_CHARS = 280;
+const COMMAND_ERROR_DETAIL_MAX_CHARS = 1_000;
 
 const DEFAULT_MISSED_JOB_STAGGER_MS = 5_000;
 const DEFAULT_MAX_MISSED_JOBS_PER_RESTART = 5;
@@ -104,10 +109,169 @@ type StartupCatchupPlan = {
   deferredJobs: StartupDeferredJob[];
 };
 
+function resolveSpawnCommand(command: string): string {
+  if (process.platform !== "win32") {
+    return command;
+  }
+  const lower = command.toLowerCase();
+  if (lower.endsWith(".cmd") || lower.endsWith(".exe") || lower.endsWith(".bat")) {
+    return command;
+  }
+  if (lower === "npm" || lower === "pnpm" || lower === "yarn" || lower === "npx") {
+    return `${command}.cmd`;
+  }
+  return command;
+}
+
+function appendCapturedText(existing: string, incoming: string): string {
+  if (existing.length >= COMMAND_OUTPUT_CAPTURE_MAX_CHARS) {
+    return existing;
+  }
+  const remaining = COMMAND_OUTPUT_CAPTURE_MAX_CHARS - existing.length;
+  return existing + incoming.slice(0, Math.max(0, remaining));
+}
+
+function truncateForSummary(input: string, maxChars: number): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.length <= maxChars) {
+    return trimmed;
+  }
+  return `${truncateUtf16Safe(trimmed, Math.max(0, maxChars - 1)).trimEnd()}…`;
+}
+
+function summarizeCommandSuccess(argv: readonly string[], stdout: string, stderr: string): string {
+  const summary =
+    truncateForSummary(stdout, COMMAND_SUMMARY_MAX_CHARS) ||
+    truncateForSummary(stderr, COMMAND_SUMMARY_MAX_CHARS);
+  if (summary) {
+    return summary;
+  }
+  return `Command completed: ${argv[0] ?? "unknown"}`;
+}
+
+function summarizeCommandFailure(params: {
+  argv: readonly string[];
+  stdout: string;
+  stderr: string;
+  code: number | null;
+  signal: NodeJS.Signals | null;
+}): string {
+  const exitDescriptor =
+    typeof params.code === "number"
+      ? `exit code ${params.code}`
+      : params.signal
+        ? `signal ${params.signal}`
+        : "unknown exit";
+  const details =
+    truncateForSummary(params.stderr, COMMAND_ERROR_DETAIL_MAX_CHARS) ||
+    truncateForSummary(params.stdout, COMMAND_ERROR_DETAIL_MAX_CHARS) ||
+    params.argv.join(" ");
+  return `Command failed (${exitDescriptor}): ${details}`;
+}
+
+async function runDeterministicCommandJob(params: {
+  job: CronJob;
+  abortSignal?: AbortSignal;
+}): Promise<CronRunOutcome> {
+  const payload = params.job.payload;
+  if (payload.kind !== "agentTurn" || !payload.command) {
+    return { status: "error", error: "invalid deterministic command payload" };
+  }
+  const command = payload.command;
+  const argv = command.argv;
+  if (argv.length === 0) {
+    return { status: "error", error: "deterministic command argv is required" };
+  }
+
+  const mergedEnv = { ...process.env, ...command.env };
+  const env = Object.fromEntries(
+    Object.entries(mergedEnv)
+      .filter(([, value]) => value !== undefined)
+      .map(([key, value]) => [key, String(value)]),
+  );
+
+  return await new Promise<CronRunOutcome>((resolve) => {
+    let settled = false;
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let aborted = false;
+    let timeoutId: NodeJS.Timeout | undefined;
+    const timeoutMs = resolveCronJobTimeoutMs(params.job);
+
+    const settle = (outcome: CronRunOutcome) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      params.abortSignal?.removeEventListener("abort", onAbort);
+      resolve(outcome);
+    };
+
+    const child = spawn(resolveSpawnCommand(argv[0]), argv.slice(1), {
+      stdio: ["ignore", "pipe", "pipe"],
+      cwd: command.cwd,
+      env,
+    });
+
+    const onAbort = () => {
+      aborted = true;
+      child.kill("SIGKILL");
+    };
+
+    if (params.abortSignal?.aborted) {
+      onAbort();
+    } else {
+      params.abortSignal?.addEventListener("abort", onAbort, { once: true });
+    }
+
+    if (typeof timeoutMs === "number") {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGKILL");
+      }, timeoutMs);
+    }
+
+    child.stdout?.on("data", (chunk) => {
+      stdout = appendCapturedText(stdout, chunk.toString());
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr = appendCapturedText(stderr, chunk.toString());
+    });
+    child.on("error", (err) => {
+      settle({ status: "error", error: `command spawn failed: ${String(err)}` });
+    });
+    child.on("close", (code, signal) => {
+      if (timedOut || aborted || params.abortSignal?.aborted) {
+        settle({ status: "error", error: timeoutErrorMessage() });
+        return;
+      }
+      if (code === 0) {
+        settle({ status: "ok", summary: summarizeCommandSuccess(argv, stdout, stderr) });
+        return;
+      }
+      settle({
+        status: "error",
+        error: summarizeCommandFailure({ argv, stdout, stderr, code, signal }),
+        summary: summarizeCommandSuccess(argv, stdout, stderr),
+      });
+    });
+  });
+}
+
 export async function executeJobCoreWithTimeout(
   state: CronServiceState,
   job: CronJob,
 ): Promise<Awaited<ReturnType<typeof executeJobCore>>> {
+  if (job.payload.kind === "agentTurn" && job.payload.command) {
+    return await executeJobCore(state, job);
+  }
   const jobTimeoutMs = resolveCronJobTimeoutMs(job);
   if (typeof jobTimeoutMs !== "number") {
     return await executeJobCore(state, job);
@@ -1506,6 +1670,9 @@ async function executeDetachedCronJob(
         nowMs: state.deps.nowMs,
       }),
     };
+  }
+  if (job.payload.command) {
+    return await runDeterministicCommandJob({ job, abortSignal });
   }
   if (abortSignal?.aborted) {
     const aborted = resolveAbortError();

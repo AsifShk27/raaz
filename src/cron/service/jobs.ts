@@ -4,6 +4,7 @@ import {
   normalizeOptionalString,
   normalizeOptionalThreadValue,
 } from "../../shared/string-coerce.js";
+import { normalizeCronCommandSpec } from "../command.js";
 import { parseAbsoluteTimeMs } from "../parse.js";
 import {
   coerceFiniteScheduleNumber,
@@ -846,6 +847,14 @@ function mergeCronPayload(existing: CronPayload, patch: CronPayloadPatch): CronP
   if (typeof patch.allowUnsafeExternalContent === "boolean") {
     next.allowUnsafeExternalContent = patch.allowUnsafeExternalContent;
   }
+  if ("command" in patch) {
+    const normalizedCommand = normalizeCronCommandSpec(patch.command);
+    if (normalizedCommand) {
+      next.command = normalizedCommand;
+    } else {
+      delete next.command;
+    }
+  }
   return next;
 }
 
@@ -871,6 +880,7 @@ function buildPayloadFromPatch(patch: CronPayloadPatch): CronPayload {
     timeoutSeconds: patch.timeoutSeconds,
     lightContext: patch.lightContext,
     allowUnsafeExternalContent: patch.allowUnsafeExternalContent,
+    command: normalizeCronCommandSpec(patch.command),
   };
 }
 
