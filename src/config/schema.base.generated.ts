@@ -19038,6 +19038,27 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
             description:
               "Command-based transcription settings for converting audio files into text before agent handling. Keep a simple, deterministic command path here so failures are easy to diagnose in logs.",
           },
+          reply: {
+            type: "object",
+            properties: {
+              command: {
+                type: "array",
+                items: {
+                  type: "string",
+                },
+              },
+              timeoutSeconds: {
+                type: "integer",
+                exclusiveMinimum: 0,
+                maximum: 9007199254740991,
+              },
+              voiceOnly: {
+                type: "boolean",
+              },
+            },
+            required: ["command"],
+            additionalProperties: false,
+          },
         },
         additionalProperties: false,
         title: "Audio",

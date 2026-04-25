@@ -4183,6 +4183,8 @@ describe("sendPolicy deny — suppress delivery, not processing (#53328)", () =>
     hookMocks.runner.runInboundClaimForPluginOutcome.mockResolvedValue({
       status: "no_handler",
     });
+    audioReplyMocks.synthesizeReplyAudio.mockReset();
+    audioReplyMocks.synthesizeReplyAudio.mockResolvedValue(undefined);
     hookMocks.runner.hasHooks.mockImplementation(
       (hookName?: string) => hookName === "reply_dispatch",
     );

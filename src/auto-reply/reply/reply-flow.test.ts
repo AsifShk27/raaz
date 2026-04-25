@@ -258,9 +258,9 @@ describe("createReplyDispatcher", () => {
     dispatcher.sendFinalReply({ text: "second", mediaUrl: "file:///tmp/audio.ogg" });
     await dispatcher.waitForIdle();
 
-    expect(dispatcher.getAccumulatedText()).toContain("first");
-    expect(dispatcher.getAccumulatedText()).toContain("second");
-    expect(dispatcher.hasDispatchedMedia()).toBe(true);
+    expect(dispatcher.getAccumulatedText?.()).toContain("first");
+    expect(dispatcher.getAccumulatedText?.()).toContain("second");
+    expect(dispatcher.hasDispatchedMedia?.()).toBe(true);
   });
 
   it("skips text-only payload delivery when skipTextOnlyDelivery is enabled", async () => {
@@ -275,8 +275,8 @@ describe("createReplyDispatcher", () => {
     await dispatcher.waitForIdle();
 
     expect(deliver).toHaveBeenCalledTimes(1);
-    expect(dispatcher.getAccumulatedText()).toContain("text only");
-    expect(dispatcher.hasDispatchedMedia()).toBe(true);
+    expect(dispatcher.getAccumulatedText?.()).toContain("text only");
+    expect(dispatcher.hasDispatchedMedia?.()).toBe(true);
   });
 });
 

@@ -11,8 +11,8 @@ export type ReplyDispatcher = {
   getCancelledCounts?: () => Record<ReplyDispatchKind, number>;
   getFailedCounts: () => Record<ReplyDispatchKind, number>;
   markComplete: () => void;
-  /** Get accumulated text from all dispatched replies for voice synthesis. */
-  getAccumulatedText: () => string;
+  /** Get accumulated text from all dispatched replies for optional voice synthesis. */
+  getAccumulatedText?: () => string;
   /** Check if any reply contained media to skip duplicate voice synthesis. */
-  hasDispatchedMedia: () => boolean;
+  hasDispatchedMedia?: () => boolean;
 };

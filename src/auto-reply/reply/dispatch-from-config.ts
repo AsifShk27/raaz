@@ -73,9 +73,9 @@ import {
   shouldAttemptTtsPayload,
 } from "../../tts/tts-config.js";
 import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
+import { synthesizeReplyAudio } from "../audio-reply.js";
 import type { BlockReplyContext } from "../get-reply-options.types.js";
 import { getReplyPayloadMetadata, type ReplyPayload } from "../reply-payload.js";
-import { synthesizeReplyAudio } from "../audio-reply.js";
 import type { FinalizedMsgContext } from "../templating.js";
 import { normalizeVerboseLevel } from "../thinking.js";
 import { resolveConversationBindingContextFromMessage } from "./conversation-binding-input.js";
@@ -1616,11 +1616,11 @@ export async function dispatchReplyFromConfig(
 
     // Generic voice reply synthesis: if inbound was audio and we have accumulated
     // text without media, synthesize voice and send it.
-    const accumulatedText = dispatcher.getAccumulatedText().trim();
+    const accumulatedText = dispatcher.getAccumulatedText?.().trim() ?? "";
     const shouldSynthesizeVoice =
       inboundAudio &&
       accumulatedText &&
-      !dispatcher.hasDispatchedMedia() &&
+      !(dispatcher.hasDispatchedMedia?.() ?? false) &&
       cfg.audio?.reply?.command?.length;
 
     if (shouldSynthesizeVoice) {
@@ -1635,16 +1635,8 @@ export async function dispatchReplyFromConfig(
           mediaUrl: audioReply.mediaUrls[0],
           audioAsVoice: audioReply.audioAsVoice ?? true,
         };
-        if (shouldRouteToOriginating && originatingChannel && originatingTo) {
-          const result = await routeReply({
-            payload: voicePayload,
-            channel: originatingChannel,
-            to: originatingTo,
-            sessionKey: ctx.SessionKey,
-            accountId: ctx.AccountId,
-            threadId: ctx.MessageThreadId,
-            cfg,
-          });
+        const result = await routeReplyToOriginating(voicePayload);
+        if (result) {
           if (result.ok) {
             queuedFinal = true;
             routedFinalCount += 1;

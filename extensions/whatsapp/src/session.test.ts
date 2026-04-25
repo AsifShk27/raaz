@@ -21,6 +21,31 @@ async function flushCredsUpdate() {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
+async function waitForCredsWriteState(params: {
+  openMock: ReturnType<typeof mockFsOpenForCredsWrites>;
+  expectedTempHandles: number;
+  isReady?: () => boolean;
+}) {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    await flushCredsUpdate();
+    await new Promise<void>((resolve) => setTimeout(resolve, 1));
+    if (
+      params.openMock.tempHandles.length >= params.expectedTempHandles &&
+      (params.isReady?.() ?? true)
+    ) {
+      return;
+    }
+  }
+  const tempPaths = params.openMock.tempHandles.map((handle) => handle.filePath).join(", ");
+  const openCalls = params.openMock.openCalls
+    .map((call) => `${call.flags}:${call.filePath}`)
+    .join(", ");
+  throw new Error(
+    `timed out waiting for ${params.expectedTempHandles} temp creds write handles; ` +
+      `saw ${params.openMock.tempHandles.length}: ${tempPaths}; open calls: ${openCalls}`,
+  );
+}
+
 async function emitCredsUpdate(authDir?: string) {
   const sock = getLastSocket();
   sock.ev.emit("creds.update", {});
@@ -51,7 +76,11 @@ function mockFsOpenForCredsWrites(params?: {
     sync: ReturnType<typeof vi.fn>;
     close: ReturnType<typeof vi.fn>;
   }> = [];
+  const openCalls: Array<{ filePath: string; flags: unknown }> = [];
   const openSpy = vi.spyOn(fs, "open").mockImplementation(async (filePath, flags, mode) => {
+    if (typeof filePath === "string") {
+      openCalls.push({ filePath, flags });
+    }
     if (typeof filePath === "string" && flags === "w" && filePath.includes(".creds.")) {
       const handle = {
         filePath,
@@ -77,6 +106,7 @@ function mockFsOpenForCredsWrites(params?: {
   });
   return {
     openSpy,
+    openCalls,
     tempHandles,
     dirHandles,
     restore() {
