@@ -1,51 +1,32 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { getChannelPluginCatalogEntry, listChannelPluginCatalogEntries } from "./catalog.js";
+import { getChannelPluginCatalogEntry } from "./catalog.js";
 
 describe("channel plugin catalog", () => {
-  it("includes Microsoft Teams", () => {
-    const entry = getChannelPluginCatalogEntry("msteams");
-    expect(entry?.install.npmSpec).toBe("@openclaw/msteams");
-    expect(entry?.meta.aliases).toContain("teams");
-  });
+  it("keeps third-party channel ids mapped with catalog install trust", () => {
+    const options = {
+      workspaceDir: "/tmp/openclaw-channel-catalog-empty-workspace",
+      env: {},
+    };
 
-  it("lists plugin catalog entries", () => {
-    const ids = listChannelPluginCatalogEntries().map((entry) => entry.id);
-    expect(ids).toContain("msteams");
-  });
-
-  it("includes external catalog entries", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-catalog-"));
-    const catalogPath = path.join(dir, "catalog.json");
-    fs.writeFileSync(
-      catalogPath,
-      JSON.stringify({
-        entries: [
-          {
-            name: "@openclaw/demo-channel",
-            openclaw: {
-              channel: {
-                id: "demo-channel",
-                label: "Demo Channel",
-                selectionLabel: "Demo Channel",
-                docsPath: "/channels/demo-channel",
-                blurb: "Demo entry",
-                order: 999,
-              },
-              install: {
-                npmSpec: "@openclaw/demo-channel",
-              },
-            },
-          },
-        ],
+    expect(getChannelPluginCatalogEntry("wecom", options)).toEqual(
+      expect.objectContaining({
+        id: "wecom",
+        pluginId: "wecom-openclaw-plugin",
+        trustedSourceLinkedOfficialInstall: true,
+        install: expect.objectContaining({
+          npmSpec: "@wecom/wecom-openclaw-plugin@2026.4.23",
+        }),
       }),
     );
-
-    const ids = listChannelPluginCatalogEntries({ catalogPaths: [catalogPath] }).map(
-      (entry) => entry.id,
+    expect(getChannelPluginCatalogEntry("yuanbao", options)).toEqual(
+      expect.objectContaining({
+        id: "yuanbao",
+        pluginId: "openclaw-plugin-yuanbao",
+        trustedSourceLinkedOfficialInstall: true,
+        install: expect.objectContaining({
+          npmSpec: "openclaw-plugin-yuanbao@2.11.0",
+        }),
+      }),
     );
-    expect(ids).toContain("demo-channel");
   });
 });

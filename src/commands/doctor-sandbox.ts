@@ -1,16 +1,25 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { OpenClawConfig } from "../config/config.js";
-import type { RuntimeEnv } from "../runtime.js";
-import type { DoctorPrompter } from "./doctor-prompter.js";
 import {
   DEFAULT_SANDBOX_BROWSER_IMAGE,
   DEFAULT_SANDBOX_COMMON_IMAGE,
   DEFAULT_SANDBOX_IMAGE,
+  isDockerDaemonUnavailable,
   resolveSandboxScope,
 } from "../agents/sandbox.js";
+import {
+  inspectLegacySandboxRegistryFiles,
+  migrateLegacySandboxRegistryFiles,
+  type LegacySandboxRegistryInspection,
+  type LegacySandboxRegistryMigrationResult,
+} from "../agents/sandbox/registry.js";
+import { formatCliCommand } from "../cli/command-format.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { runCommandWithTimeout, runExec } from "../process/exec.js";
+import type { RuntimeEnv } from "../runtime.js";
 import { note } from "../terminal/note.js";
+import { shortenHomePath } from "../utils.js";
+import type { DoctorPrompter } from "./doctor-prompter.js";
 
 type SandboxScriptInfo = {
   scriptPath: string;
@@ -82,7 +91,10 @@ async function dockerImageExists(image: string): Promise<boolean> {
       (error as { stderr: string } | undefined)?.stderr ||
       (error as { message: string } | undefined)?.message ||
       "";
-    if (String(stderr).includes("No such image")) {
+    if (stderr.includes("No such image")) {
+      return false;
+    }
+    if (isDockerDaemonUnavailable(stderr)) {
       return false;
     }
     throw error;
@@ -92,6 +104,11 @@ async function dockerImageExists(image: string): Promise<boolean> {
 function resolveSandboxDockerImage(cfg: OpenClawConfig): string {
   const image = cfg.agents?.defaults?.sandbox?.docker?.image?.trim();
   return image ? image : DEFAULT_SANDBOX_IMAGE;
+}
+
+function resolveSandboxBackend(cfg: OpenClawConfig): string {
+  const backend = cfg.agents?.defaults?.sandbox?.backend?.trim();
+  return backend || "docker";
 }
 
 function resolveSandboxBrowserImage(cfg: OpenClawConfig): string {
@@ -161,7 +178,7 @@ async function handleMissingSandboxImage(
 
   let built = false;
   if (params.buildScript) {
-    const build = await prompter.confirmSkipInNonInteractive({
+    const build = await prompter.confirmRuntimeRepair({
       message: `Build ${params.kind} sandbox image now?`,
       initialValue: true,
     });
@@ -185,10 +202,29 @@ export async function maybeRepairSandboxImages(
   if (!sandbox || mode === "off") {
     return cfg;
   }
+  const backend = resolveSandboxBackend(cfg);
+  if (backend !== "docker") {
+    if (sandbox.browser?.enabled) {
+      note(
+        `Sandbox backend "${backend}" selected. Docker browser health checks are skipped; browser sandbox currently requires the docker backend.`,
+        "Sandbox",
+      );
+    }
+    return cfg;
+  }
 
   const dockerAvailable = await isDockerAvailable();
   if (!dockerAvailable) {
-    note("Docker not available; skipping sandbox image checks.", "Sandbox");
+    const lines = [
+      `Sandbox mode is enabled (mode: "${mode}") but Docker is not available.`,
+      "Docker is required for sandbox mode to function.",
+      "Isolated sessions (cron jobs, sub-agents) will fail without Docker.",
+      "",
+      "Options:",
+      "- Install Docker and restart the gateway",
+      "- Disable sandbox mode: openclaw config set agents.defaults.sandbox.mode off",
+    ];
+    note(lines.join("\n"), "Sandbox");
     return cfg;
   }
 
@@ -238,6 +274,53 @@ export async function maybeRepairSandboxImages(
   return next;
 }
 
+function formatLegacyRegistryInspectionLine(file: LegacySandboxRegistryInspection): string {
+  const status = file.valid ? `${file.entries} entr${file.entries === 1 ? "y" : "ies"}` : "invalid";
+  return `- ${file.kind}: ${shortenHomePath(file.registryPath)} (${status})`;
+}
+
+function formatLegacyRegistryMigrationLine(result: LegacySandboxRegistryMigrationResult): string {
+  const file = shortenHomePath(result.registryPath);
+  if (result.status === "migrated") {
+    return `- Migrated ${result.kind} registry from ${file} into ${result.entries} shard${result.entries === 1 ? "" : "s"}.`;
+  }
+  if (result.status === "removed-empty") {
+    return `- Removed empty legacy ${result.kind} registry ${file}.`;
+  }
+  if (result.status === "quarantined-invalid") {
+    const quarantine = result.quarantinePath ? ` to ${shortenHomePath(result.quarantinePath)}` : "";
+    return `- Quarantined invalid legacy ${result.kind} registry ${file}${quarantine}.`;
+  }
+  return "";
+}
+
+export async function maybeRepairSandboxRegistryFiles(prompter: DoctorPrompter): Promise<void> {
+  const legacyFiles = (await inspectLegacySandboxRegistryFiles()).filter((file) => file.exists);
+  if (legacyFiles.length === 0) {
+    return;
+  }
+
+  if (!prompter.shouldRepair) {
+    note(
+      [
+        "Legacy sandbox registry files detected.",
+        ...legacyFiles.map(formatLegacyRegistryInspectionLine),
+        `Run ${formatCliCommand("openclaw doctor --fix")} to migrate them to sharded registry files.`,
+      ].join("\n"),
+      "Sandbox",
+    );
+    return;
+  }
+
+  const results = (await migrateLegacySandboxRegistryFiles())
+    .filter((result) => result.status !== "missing")
+    .map(formatLegacyRegistryMigrationLine)
+    .filter((line) => line.length > 0);
+  if (results.length > 0) {
+    note(results.join("\n"), "Doctor changes");
+  }
+}
+
 export function noteSandboxScopeWarnings(cfg: OpenClawConfig) {
   const globalSandbox = cfg.agents?.defaults?.sandbox;
   const agents = Array.isArray(cfg.agents?.list) ? cfg.agents.list : [];
@@ -252,7 +335,6 @@ export function noteSandboxScopeWarnings(cfg: OpenClawConfig) {
 
     const scope = resolveSandboxScope({
       scope: agentSandbox.scope ?? globalSandbox?.scope,
-      perSession: agentSandbox.perSession ?? globalSandbox?.perSession,
     });
 
     if (scope !== "shared") {

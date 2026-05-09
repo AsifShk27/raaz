@@ -1,20 +1,11 @@
-import type { WebSocketServer } from "ws";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
-import type { ResolvedGatewayAuth } from "./auth.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "./server-methods/types.js";
-import type { GatewayWsClient } from "./server/ws-types.js";
-import { attachGatewayWsConnectionHandler } from "./server/ws-connection.js";
+import {
+  attachGatewayWsConnectionHandler,
+  type GatewayWsSharedHandlerParams,
+} from "./server/ws-connection.js";
 
-export function attachGatewayWsHandlers(params: {
-  wss: WebSocketServer;
-  clients: Set<GatewayWsClient>;
-  port: number;
-  gatewayHost?: string;
-  canvasHostEnabled: boolean;
-  canvasHostServerPort?: number;
-  resolvedAuth: ResolvedGatewayAuth;
-  gatewayMethods: string[];
-  events: string[];
+type GatewayWsRuntimeParams = Omit<GatewayWsSharedHandlerParams, "refreshHealthSnapshot"> & {
   logGateway: ReturnType<typeof createSubsystemLogger>;
   logHealth: ReturnType<typeof createSubsystemLogger>;
   logWsControl: ReturnType<typeof createSubsystemLogger>;
@@ -28,17 +19,28 @@ export function attachGatewayWsHandlers(params: {
     },
   ) => void;
   context: GatewayRequestContext;
-}) {
+};
+
+export function attachGatewayWsHandlers(params: GatewayWsRuntimeParams) {
   attachGatewayWsConnectionHandler({
     wss: params.wss,
     clients: params.clients,
+    preauthConnectionBudget: params.preauthConnectionBudget,
     port: params.port,
     gatewayHost: params.gatewayHost,
     canvasHostEnabled: params.canvasHostEnabled,
+    canvasHostScheme: params.canvasHostScheme,
     canvasHostServerPort: params.canvasHostServerPort,
     resolvedAuth: params.resolvedAuth,
+    getResolvedAuth: params.getResolvedAuth,
+    getRequiredSharedGatewaySessionGeneration: params.getRequiredSharedGatewaySessionGeneration,
+    rateLimiter: params.rateLimiter,
+    browserRateLimiter: params.browserRateLimiter,
+    preauthHandshakeTimeoutMs: params.preauthHandshakeTimeoutMs,
+    isStartupPending: params.isStartupPending,
     gatewayMethods: params.gatewayMethods,
     events: params.events,
+    refreshHealthSnapshot: params.context.refreshHealthSnapshot,
     logGateway: params.logGateway,
     logHealth: params.logHealth,
     logWsControl: params.logWsControl,

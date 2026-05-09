@@ -1,11 +1,11 @@
-import { z } from "zod";
+import { z } from "openclaw/plugin-sdk/zod";
 import type { CallMode } from "./config.js";
 
 // -----------------------------------------------------------------------------
 // Provider Identifiers
 // -----------------------------------------------------------------------------
 
-export const ProviderNameSchema = z.enum(["telnyx", "twilio", "plivo", "mock"]);
+const ProviderNameSchema = z.enum(["telnyx", "twilio", "plivo", "mock"]);
 export type ProviderName = z.infer<typeof ProviderNameSchema>;
 
 // -----------------------------------------------------------------------------
@@ -16,13 +16,13 @@ export type ProviderName = z.infer<typeof ProviderNameSchema>;
 export type CallId = string;
 
 /** Provider-specific call identifier */
-export type ProviderCallId = string;
+type ProviderCallId = string;
 
 // -----------------------------------------------------------------------------
 // Call Lifecycle States
 // -----------------------------------------------------------------------------
 
-export const CallStateSchema = z.enum([
+const CallStateSchema = z.enum([
   // Non-terminal states
   "initiated",
   "ringing",
@@ -55,7 +55,7 @@ export const TerminalStates = new Set<CallState>([
   "voicemail",
 ]);
 
-export const EndReasonSchema = z.enum([
+const EndReasonSchema = z.enum([
   "completed",
   "hangup-user",
   "hangup-bot",
@@ -74,16 +74,20 @@ export type EndReason = z.infer<typeof EndReasonSchema>;
 
 const BaseEventSchema = z.object({
   id: z.string(),
+  // Stable provider-derived key for idempotency/replay dedupe.
+  dedupeKey: z.string().optional(),
   callId: z.string(),
   providerCallId: z.string().optional(),
   timestamp: z.number(),
+  // Optional per-turn nonce for speech events (Twilio <Gather> replay hardening).
+  turnToken: z.string().optional(),
   // Optional fields for inbound call detection
   direction: z.enum(["inbound", "outbound"]).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
 });
 
-export const NormalizedEventSchema = z.discriminatedUnion("type", [
+const NormalizedEventSchema = z.discriminatedUnion("type", [
   BaseEventSchema.extend({
     type: z.literal("call.initiated"),
   }),
@@ -130,14 +134,13 @@ export type NormalizedEvent = z.infer<typeof NormalizedEventSchema>;
 // Call Direction
 // -----------------------------------------------------------------------------
 
-export const CallDirectionSchema = z.enum(["outbound", "inbound"]);
-export type CallDirection = z.infer<typeof CallDirectionSchema>;
+const CallDirectionSchema = z.enum(["outbound", "inbound"]);
 
 // -----------------------------------------------------------------------------
 // Call Record
 // -----------------------------------------------------------------------------
 
-export const TranscriptEntrySchema = z.object({
+const TranscriptEntrySchema = z.object({
   timestamp: z.number(),
   speaker: z.enum(["bot", "user"]),
   text: z.string(),
@@ -171,6 +174,15 @@ export type CallRecord = z.infer<typeof CallRecordSchema>;
 export type WebhookVerificationResult = {
   ok: boolean;
   reason?: string;
+  /** Signature is valid, but request was seen before within replay window. */
+  isReplay?: boolean;
+  /** Stable key derived from authenticated request material. */
+  verifiedRequestKey?: string;
+};
+
+export type WebhookParseOptions = {
+  /** Stable request key from verifyWebhook. */
+  verifiedRequestKey?: string;
 };
 
 export type WebhookContext = {
@@ -199,8 +211,10 @@ export type InitiateCallInput = {
   to: string;
   webhookUrl: string;
   clientState?: Record<string, string>;
-  /** Inline TwiML to execute (skips webhook, used for notify mode) */
+  /** Inline TwiML to execute without fetching webhook TwiML. */
   inlineTwiml?: string;
+  /** TwiML to serve once before normal webhook-driven call handling resumes. */
+  preConnectTwiml?: string;
 };
 
 export type InitiateCallResult = {
@@ -214,6 +228,11 @@ export type HangupCallInput = {
   reason: EndReason;
 };
 
+export type AnswerCallInput = {
+  callId: CallId;
+  providerCallId: ProviderCallId;
+};
+
 export type PlayTtsInput = {
   callId: CallId;
   providerCallId: ProviderCallId;
@@ -222,15 +241,40 @@ export type PlayTtsInput = {
   locale?: string;
 };
 
+export type SendDtmfInput = {
+  callId: CallId;
+  providerCallId: ProviderCallId;
+  digits: string;
+};
+
 export type StartListeningInput = {
   callId: CallId;
   providerCallId: ProviderCallId;
   language?: string;
+  /** Optional per-turn nonce for provider callbacks (replay hardening). */
+  turnToken?: string;
 };
 
 export type StopListeningInput = {
   callId: CallId;
   providerCallId: ProviderCallId;
+};
+
+// -----------------------------------------------------------------------------
+// Call Status Verification (used on restart to verify persisted calls)
+// -----------------------------------------------------------------------------
+
+export type GetCallStatusInput = {
+  providerCallId: ProviderCallId;
+};
+
+export type GetCallStatusResult = {
+  /** Provider-specific status string (e.g. "completed", "in-progress") */
+  status: string;
+  /** True when the provider confirms the call has ended */
+  isTerminal: boolean;
+  /** True when the status could not be determined (transient error) */
+  isUnknown?: boolean;
 };
 
 // -----------------------------------------------------------------------------
@@ -242,31 +286,6 @@ export type OutboundCallOptions = {
   message?: string;
   /** Call mode (overrides config default) */
   mode?: CallMode;
-};
-
-// -----------------------------------------------------------------------------
-// Tool Result Types
-// -----------------------------------------------------------------------------
-
-export type InitiateCallToolResult = {
-  success: boolean;
-  callId?: string;
-  status?: "initiated" | "queued" | "no-answer" | "busy" | "failed";
-  error?: string;
-};
-
-export type ContinueCallToolResult = {
-  success: boolean;
-  transcript?: string;
-  error?: string;
-};
-
-export type SpeakToUserToolResult = {
-  success: boolean;
-  error?: string;
-};
-
-export type EndCallToolResult = {
-  success: boolean;
-  error?: string;
+  /** DTMF digits to send after the call is connected */
+  dtmfSequence?: string;
 };

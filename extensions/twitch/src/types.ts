@@ -6,25 +6,17 @@
  */
 
 import type {
-  ChannelGatewayContext,
-  ChannelOutboundAdapter,
-  ChannelOutboundContext,
-  ChannelResolveKind,
-  ChannelResolveResult,
-  ChannelStatusAdapter,
-} from "../../../src/channels/plugins/types.adapters.js";
-import type {
   ChannelAccountSnapshot,
-  ChannelCapabilities,
   ChannelLogSink,
   ChannelMessageActionAdapter,
   ChannelMessageActionContext,
-  ChannelMeta,
-} from "../../../src/channels/plugins/types.core.js";
-import type { ChannelPlugin } from "../../../src/channels/plugins/types.plugin.js";
-import type { OpenClawConfig } from "../../../src/config/config.js";
-import type { OutboundDeliveryResult } from "../../../src/infra/outbound/deliver.js";
-import type { RuntimeEnv } from "../../../src/runtime.js";
+  ChannelOutboundAdapter,
+  ChannelOutboundContext,
+  ChannelPlugin,
+  ChannelResolveKind,
+  ChannelResolveResult,
+  OutboundDeliveryResult,
+} from "../runtime-api.js";
 
 // ============================================================================
 // Twitch-Specific Types
@@ -55,6 +47,8 @@ export interface TwitchAccountConfig {
   allowedRoles?: TwitchRole[];
   /** Require @mention to trigger bot responses */
   requireMention?: boolean;
+  /** Outbound response prefix override for this channel/account. */
+  responsePrefix?: string;
   /** Twitch client secret (required for token refresh via RefreshingAuthProvider) */
   clientSecret?: string;
   /** Refresh token (required for automatic token refresh) */
@@ -63,16 +57,6 @@ export interface TwitchAccountConfig {
   expiresIn?: number | null;
   /** Timestamp when token was obtained (optional, for token refresh tracking) */
   obtainmentTimestamp?: number;
-}
-
-/**
- * Message target for Twitch
- */
-export interface TwitchTarget {
-  /** Account ID */
-  accountId: string;
-  /** Channel name (defaults to account's channel) */
-  channel?: string;
 }
 
 /**
@@ -105,37 +89,16 @@ export interface TwitchChatMessage {
   chatType?: "group";
 }
 
-/**
- * Send result from Twitch client
- */
-export interface SendResult {
-  ok: boolean;
-  error?: string;
-  messageId?: string;
-}
-
 // Re-export core types for convenience
 export type {
   ChannelAccountSnapshot,
-  ChannelGatewayContext,
   ChannelLogSink,
   ChannelMessageActionAdapter,
   ChannelMessageActionContext,
-  ChannelMeta,
   ChannelOutboundAdapter,
-  ChannelStatusAdapter,
-  ChannelCapabilities,
   ChannelResolveKind,
   ChannelResolveResult,
   ChannelPlugin,
   ChannelOutboundContext,
   OutboundDeliveryResult,
 };
-
-import type { z } from "zod";
-// Import and re-export the schema type
-import type { TwitchConfigSchema } from "./config-schema.js";
-export type TwitchConfig = z.infer<typeof TwitchConfigSchema>;
-
-export type { OpenClawConfig };
-export type { RuntimeEnv };

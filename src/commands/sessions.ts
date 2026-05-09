@@ -1,48 +1,98 @@
-import type { RuntimeEnv } from "../runtime.js";
-import { lookupContextTokens } from "../agents/context.js";
-import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
-import { resolveConfiguredModelRef } from "../agents/model-selection.js";
-import { loadConfig } from "../config/config.js";
-import { loadSessionStore, resolveStorePath, type SessionEntry } from "../config/sessions.js";
+import { resolveAgentRuntimeMetadata } from "../agents/agent-runtime-metadata.js";
+import { DEFAULT_CONTEXT_TOKENS } from "../agents/defaults.js";
+import { selectAgentHarness } from "../agents/harness/selection.js";
+import { getRuntimeConfig } from "../config/config.js";
+import { loadSessionStore, resolveSessionTotalTokens } from "../config/sessions.js";
+import type { SessionEntry } from "../config/sessions/types.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { info } from "../globals.js";
+import { parseAgentSessionKey } from "../routing/session-key.js";
+import { type RuntimeEnv, writeRuntimeJson } from "../runtime.js";
+import { isCronSessionKey } from "../sessions/session-key-utils.js";
+import { createLazyImportLoader } from "../shared/lazy-promise.js";
+import { normalizeOptionalLowercaseString } from "../shared/string-coerce.js";
+import { resolveAgentRuntimeLabel } from "../status/agent-runtime-label.js";
 import { isRich, theme } from "../terminal/theme.js";
+import { resolveSessionStoreTargetsOrExit } from "./session-store-targets.js";
+import {
+  resolveSessionDisplayModelRef,
+  resolveSessionDisplayDefaults,
+  resolveSessionDisplayModel,
+} from "./sessions-display-model.js";
+import {
+  formatSessionAgeCell,
+  formatSessionFlagsCell,
+  formatSessionKeyCell,
+  formatSessionModelCell,
+  SESSION_AGE_PAD,
+  SESSION_KEY_PAD,
+  SESSION_MODEL_PAD,
+  type SessionDisplayRow,
+  toSessionDisplayRow,
+} from "./sessions-table.js";
 
-type SessionRow = {
-  key: string;
-  kind: "direct" | "group" | "global" | "unknown";
-  updatedAt: number | null;
-  ageMs: number | null;
-  sessionId?: string;
-  systemSent?: boolean;
-  abortedLastRun?: boolean;
-  thinkingLevel?: string;
-  verboseLevel?: string;
-  reasoningLevel?: string;
-  elevatedLevel?: string;
-  responseUsage?: string;
-  groupActivation?: string;
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-  model?: string;
-  contextTokens?: number;
+type SessionRow = SessionDisplayRow & {
+  agentId: string;
+  kind: "cron" | "direct" | "group" | "global" | "unknown";
+  agentRuntime: ReturnType<typeof resolveAgentRuntimeMetadata>;
+  runtimeLabel: string;
 };
 
+const AGENT_PAD = 10;
 const KIND_PAD = 6;
-const KEY_PAD = 26;
-const AGE_PAD = 9;
-const MODEL_PAD = 14;
+const RUNTIME_PAD = 18;
 const TOKENS_PAD = 20;
+const DEFAULT_SESSIONS_LIMIT = 100;
+const TOP_N_SELECTION_LIMIT = 200;
+const contextLookupRuntimeLoader = createLazyImportLoader(() => import("../agents/context.js"));
 
 const formatKTokens = (value: number) => `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)}k`;
 
-const truncateKey = (key: string) => {
-  if (key.length <= KEY_PAD) {
-    return key;
+function compareSessionRowsByUpdatedAt(a: SessionRow, b: SessionRow): number {
+  return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+}
+
+function selectNewestSessionRows(rows: SessionRow[], limit: number | undefined): SessionRow[] {
+  if (limit === undefined) {
+    return rows.toSorted(compareSessionRowsByUpdatedAt);
   }
-  const head = Math.max(4, KEY_PAD - 10);
-  return `${key.slice(0, head)}...${key.slice(-6)}`;
-};
+  if (limit > TOP_N_SELECTION_LIMIT) {
+    return rows.toSorted(compareSessionRowsByUpdatedAt).slice(0, limit);
+  }
+  const selected: SessionRow[] = [];
+  for (const row of rows) {
+    const insertAt = selected.findIndex(
+      (candidate) => compareSessionRowsByUpdatedAt(row, candidate) < 0,
+    );
+    if (insertAt >= 0) {
+      selected.splice(insertAt, 0, row);
+      if (selected.length > limit) {
+        selected.pop();
+      }
+    } else if (selected.length < limit) {
+      selected.push(row);
+    }
+  }
+  return selected;
+}
+
+function parseSessionsLimit(value: string | number | undefined): number | undefined | null {
+  if (value === undefined) {
+    return DEFAULT_SESSIONS_LIMIT;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.toLowerCase() === "all") {
+      return undefined;
+    }
+    if (!/^\d+$/.test(trimmed)) {
+      return null;
+    }
+    const parsed = Number.parseInt(trimmed, 10);
+    return parsed > 0 ? parsed : null;
+  }
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
 
 const colorByPct = (label: string, pct: number | null, rich: boolean) => {
   if (!rich || pct === null) {
@@ -60,9 +110,15 @@ const colorByPct = (label: string, pct: number | null, rich: boolean) => {
   return theme.muted(label);
 };
 
-const formatTokensCell = (total: number, contextTokens: number | null, rich: boolean) => {
-  if (!total) {
-    return "-".padEnd(TOKENS_PAD);
+const formatTokensCell = (
+  total: number | undefined,
+  contextTokens: number | null,
+  rich: boolean,
+) => {
+  if (total === undefined) {
+    const ctxLabel = contextTokens ? formatKTokens(contextTokens) : "?";
+    const label = `unknown/${ctxLabel} (?%)`;
+    return rich ? theme.muted(label.padEnd(TOKENS_PAD)) : label.padEnd(TOKENS_PAD);
   }
   const totalLabel = formatKTokens(total);
   const ctxLabel = contextTokens ? formatKTokens(contextTokens) : "?";
@@ -71,6 +127,30 @@ const formatTokensCell = (total: number, contextTokens: number | null, rich: boo
   const padded = label.padEnd(TOKENS_PAD);
   return colorByPct(padded, pct, rich);
 };
+
+async function lookupContextTokensForDisplay(model: string): Promise<number | undefined> {
+  const { lookupContextTokens } = await contextLookupRuntimeLoader.load();
+  return lookupContextTokens(model, { allowAsyncLoad: false });
+}
+
+function classifySessionKey(key: string, entry?: { chatType?: string | null }): SessionRow["kind"] {
+  if (key === "global") {
+    return "global";
+  }
+  if (key === "unknown") {
+    return "unknown";
+  }
+  if (isCronSessionKey(key)) {
+    return "cron";
+  }
+  if (entry?.chatType === "group" || entry?.chatType === "channel") {
+    return "group";
+  }
+  if (key.includes(":group:") || key.includes(":channel:")) {
+    return "group";
+  }
+  return "direct";
+}
 
 const formatKindCell = (kind: SessionRow["kind"], rich: boolean) => {
   const label = kind.padEnd(KIND_PAD);
@@ -89,117 +169,99 @@ const formatKindCell = (kind: SessionRow["kind"], rich: boolean) => {
   return theme.muted(label);
 };
 
-const formatAgeCell = (updatedAt: number | null | undefined, rich: boolean) => {
-  const ageLabel = updatedAt ? formatAge(Date.now() - updatedAt) : "unknown";
-  const padded = ageLabel.padEnd(AGE_PAD);
-  return rich ? theme.muted(padded) : padded;
-};
+function resolveSessionRuntimeLabel(params: {
+  cfg: OpenClawConfig;
+  entry: SessionEntry;
+  agentRuntime: ReturnType<typeof resolveAgentRuntimeMetadata>;
+  modelProvider: string;
+  model: string;
+  agentId: string;
+  sessionKey: string;
+}): string {
+  const explicitRuntime =
+    normalizeOptionalLowercaseString(params.entry.agentRuntimeOverride) ??
+    normalizeOptionalLowercaseString(params.entry.agentHarnessId) ??
+    (params.agentRuntime.source === "implicit"
+      ? undefined
+      : normalizeOptionalLowercaseString(params.agentRuntime.id));
+  if (explicitRuntime && explicitRuntime !== "auto" && explicitRuntime !== "default") {
+    return resolveAgentRuntimeLabel({
+      config: params.cfg,
+      sessionEntry: params.entry,
+      resolvedHarness: explicitRuntime,
+      fallbackProvider: params.modelProvider,
+    });
+  }
 
-const formatModelCell = (model: string | null | undefined, rich: boolean) => {
-  const label = (model ?? "unknown").padEnd(MODEL_PAD);
-  return rich ? theme.info(label) : label;
-};
-
-const formatFlagsCell = (row: SessionRow, rich: boolean) => {
-  const flags = [
-    row.thinkingLevel ? `think:${row.thinkingLevel}` : null,
-    row.verboseLevel ? `verbose:${row.verboseLevel}` : null,
-    row.reasoningLevel ? `reasoning:${row.reasoningLevel}` : null,
-    row.elevatedLevel ? `elev:${row.elevatedLevel}` : null,
-    row.responseUsage ? `usage:${row.responseUsage}` : null,
-    row.groupActivation ? `activation:${row.groupActivation}` : null,
-    row.systemSent ? "system" : null,
-    row.abortedLastRun ? "aborted" : null,
-    row.sessionId ? `id:${row.sessionId}` : null,
-  ].filter(Boolean);
-  const label = flags.join(" ");
-  return label.length === 0 ? "" : rich ? theme.muted(label) : label;
-};
-
-const formatAge = (ms: number | null | undefined) => {
-  if (!ms || ms < 0) {
-    return "unknown";
+  let resolvedHarness: string | undefined;
+  try {
+    const selected = selectAgentHarness({
+      provider: params.modelProvider,
+      modelId: params.model,
+      config: params.cfg,
+      agentId: params.agentId,
+      sessionKey: params.sessionKey,
+      agentHarnessId: params.entry.agentHarnessId,
+    });
+    const id = normalizeOptionalLowercaseString(selected.id);
+    resolvedHarness = id && id !== "pi" ? id : undefined;
+  } catch {
+    resolvedHarness = undefined;
   }
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 1) {
-    return "just now";
-  }
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) {
-    return `${hours}h ago`;
-  }
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-};
-
-function classifyKey(key: string, entry?: SessionEntry): SessionRow["kind"] {
-  if (key === "global") {
-    return "global";
-  }
-  if (key === "unknown") {
-    return "unknown";
-  }
-  if (entry?.chatType === "group" || entry?.chatType === "channel") {
-    return "group";
-  }
-  if (key.includes(":group:") || key.includes(":channel:")) {
-    return "group";
-  }
-  return "direct";
+  return resolveAgentRuntimeLabel({
+    config: params.cfg,
+    sessionEntry: params.entry,
+    resolvedHarness,
+    fallbackProvider: params.modelProvider,
+  });
 }
 
-function toRows(store: Record<string, SessionEntry>): SessionRow[] {
-  return Object.entries(store)
-    .map(([key, entry]) => {
-      const updatedAt = entry?.updatedAt ?? null;
-      return {
-        key,
-        kind: classifyKey(key, entry),
-        updatedAt,
-        ageMs: updatedAt ? Date.now() - updatedAt : null,
-        sessionId: entry?.sessionId,
-        systemSent: entry?.systemSent,
-        abortedLastRun: entry?.abortedLastRun,
-        thinkingLevel: entry?.thinkingLevel,
-        verboseLevel: entry?.verboseLevel,
-        reasoningLevel: entry?.reasoningLevel,
-        elevatedLevel: entry?.elevatedLevel,
-        responseUsage: entry?.responseUsage,
-        groupActivation: entry?.groupActivation,
-        inputTokens: entry?.inputTokens,
-        outputTokens: entry?.outputTokens,
-        totalTokens: entry?.totalTokens,
-        model: entry?.model,
-        contextTokens: entry?.contextTokens,
-      } satisfies SessionRow;
-    })
-    .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+function formatRuntimeCell(runtimeLabel: string, rich: boolean): string {
+  const label = runtimeLabel.padEnd(RUNTIME_PAD);
+  return rich ? theme.info(label) : label;
+}
+
+function toJsonSessionRow(row: SessionRow): Omit<SessionRow, "runtimeLabel"> {
+  const { runtimeLabel, ...jsonRow } = row;
+  void runtimeLabel;
+  return jsonRow;
 }
 
 export async function sessionsCommand(
-  opts: { json?: boolean; store?: string; active?: string },
+  opts: {
+    json?: boolean;
+    store?: string;
+    active?: string;
+    agent?: string;
+    allAgents?: boolean;
+    limit?: string | number;
+  },
   runtime: RuntimeEnv,
 ) {
-  const cfg = loadConfig();
-  const resolved = resolveConfiguredModelRef({
-    cfg,
-    defaultProvider: DEFAULT_PROVIDER,
-    defaultModel: DEFAULT_MODEL,
-  });
+  const aggregateAgents = opts.allAgents === true;
+  const cfg = getRuntimeConfig();
+  const displayDefaults = resolveSessionDisplayDefaults(cfg);
+  const configuredContextTokens = cfg.agents?.defaults?.contextTokens;
   const configContextTokens =
-    cfg.agents?.defaults?.contextTokens ??
-    lookupContextTokens(resolved.model) ??
+    configuredContextTokens ??
+    (await lookupContextTokensForDisplay(displayDefaults.model)) ??
     DEFAULT_CONTEXT_TOKENS;
-  const configModel = resolved.model ?? DEFAULT_MODEL;
-  const storePath = resolveStorePath(opts.store ?? cfg.session?.store);
-  const store = loadSessionStore(storePath);
+  const targets = resolveSessionStoreTargetsOrExit({
+    cfg,
+    opts: {
+      store: opts.store,
+      agent: opts.agent,
+      allAgents: opts.allAgents,
+    },
+    runtime,
+  });
+  if (!targets) {
+    return;
+  }
 
   let activeMinutes: number | undefined;
   if (opts.active !== undefined) {
-    const parsed = Number.parseInt(String(opts.active), 10);
+    const parsed = Number.parseInt(opts.active, 10);
     if (Number.isNaN(parsed) || parsed <= 0) {
       runtime.error("--active must be a positive integer (minutes)");
       runtime.exit(1);
@@ -208,39 +270,103 @@ export async function sessionsCommand(
     activeMinutes = parsed;
   }
 
-  const rows = toRows(store).filter((row) => {
-    if (activeMinutes === undefined) {
-      return true;
-    }
-    if (!row.updatedAt) {
-      return false;
-    }
-    return Date.now() - row.updatedAt <= activeMinutes * 60_000;
-  });
-
-  if (opts.json) {
-    runtime.log(
-      JSON.stringify(
-        {
-          path: storePath,
-          count: rows.length,
-          activeMinutes: activeMinutes ?? null,
-          sessions: rows.map((r) => ({
-            ...r,
-            contextTokens:
-              r.contextTokens ?? lookupContextTokens(r.model) ?? configContextTokens ?? null,
-            model: r.model ?? configModel ?? null,
-          })),
-        },
-        null,
-        2,
-      ),
-    );
+  const limit = parseSessionsLimit(opts.limit);
+  if (limit === null) {
+    runtime.error('--limit must be a positive integer or "all"');
+    runtime.exit(1);
     return;
   }
 
-  runtime.log(info(`Session store: ${storePath}`));
-  runtime.log(info(`Sessions listed: ${rows.length}`));
+  const allRows = targets.flatMap((target) => {
+    const store = loadSessionStore(target.storePath);
+    return Object.entries(store)
+      .filter(([, entry]) => {
+        if (activeMinutes === undefined) {
+          return true;
+        }
+        const updatedAt = entry?.updatedAt;
+        return typeof updatedAt === "number" && Date.now() - updatedAt <= activeMinutes * 60_000;
+      })
+      .map(([key, entry]) => {
+        const row = toSessionDisplayRow(key, entry);
+        const agentId = parseAgentSessionKey(row.key)?.agentId ?? target.agentId;
+        const modelRef = resolveSessionDisplayModelRef(cfg, row);
+        const agentRuntime = resolveAgentRuntimeMetadata(cfg, agentId);
+        return Object.assign({}, row, {
+          agentId,
+          agentRuntime,
+          kind: classifySessionKey(row.key, store[row.key]),
+          runtimeLabel: resolveSessionRuntimeLabel({
+            cfg,
+            entry,
+            agentRuntime,
+            modelProvider: modelRef.provider,
+            model: modelRef.model,
+            agentId,
+            sessionKey: row.key,
+          }),
+        });
+      });
+  });
+  const totalCount = allRows.length;
+  const rows = selectNewestSessionRows(allRows, limit);
+  const hasMore = rows.length < totalCount;
+
+  if (opts.json) {
+    const multi = targets.length > 1;
+    const aggregate = aggregateAgents || multi;
+    writeRuntimeJson(runtime, {
+      path: aggregate ? null : (targets[0]?.storePath ?? null),
+      stores: aggregate
+        ? targets.map((target) => ({
+            agentId: target.agentId,
+            path: target.storePath,
+          }))
+        : undefined,
+      allAgents: aggregateAgents ? true : undefined,
+      count: rows.length,
+      totalCount,
+      limitApplied: limit ?? null,
+      hasMore,
+      activeMinutes: activeMinutes ?? null,
+      sessions: await Promise.all(
+        rows.map(async (row) => {
+          const r = toJsonSessionRow(row);
+          const modelRef = resolveSessionDisplayModelRef(cfg, r);
+          return {
+            ...r,
+            totalTokens: resolveSessionTotalTokens(r) ?? null,
+            totalTokensFresh:
+              typeof r.totalTokens === "number" ? r.totalTokensFresh !== false : false,
+            contextTokens:
+              r.contextTokens ??
+              configuredContextTokens ??
+              (await lookupContextTokensForDisplay(modelRef.model)) ??
+              configContextTokens ??
+              null,
+            modelProvider: modelRef.provider,
+            model: modelRef.model,
+          };
+        }),
+      ),
+    });
+    return;
+  }
+
+  if (targets.length === 1 && !aggregateAgents) {
+    runtime.log(info(`Session store: ${targets[0]?.storePath}`));
+  } else {
+    runtime.log(
+      info(`Session stores: ${targets.length} (${targets.map((t) => t.agentId).join(", ")})`),
+    );
+  }
+  runtime.log(
+    info(
+      hasMore && limit !== undefined
+        ? `Sessions listed: ${rows.length} of ${totalCount} (limit ${limit})`
+        : `Sessions listed: ${rows.length}`,
+    ),
+  );
   if (activeMinutes) {
     runtime.log(info(`Filtered to last ${activeMinutes} minute(s)`));
   }
@@ -250,11 +376,14 @@ export async function sessionsCommand(
   }
 
   const rich = isRich();
+  const showAgentColumn = aggregateAgents || targets.length > 1;
   const header = [
+    ...(showAgentColumn ? ["Agent".padEnd(AGENT_PAD)] : []),
     "Kind".padEnd(KIND_PAD),
-    "Key".padEnd(KEY_PAD),
-    "Age".padEnd(AGE_PAD),
-    "Model".padEnd(MODEL_PAD),
+    "Key".padEnd(SESSION_KEY_PAD),
+    "Age".padEnd(SESSION_AGE_PAD),
+    "Model".padEnd(SESSION_MODEL_PAD),
+    "Runtime".padEnd(RUNTIME_PAD),
     "Tokens (ctx %)".padEnd(TOKENS_PAD),
     "Flags",
   ].join(" ");
@@ -262,22 +391,25 @@ export async function sessionsCommand(
   runtime.log(rich ? theme.heading(header) : header);
 
   for (const row of rows) {
-    const model = row.model ?? configModel;
-    const contextTokens = row.contextTokens ?? lookupContextTokens(model) ?? configContextTokens;
-    const input = row.inputTokens ?? 0;
-    const output = row.outputTokens ?? 0;
-    const total = row.totalTokens ?? input + output;
-
-    const keyLabel = truncateKey(row.key).padEnd(KEY_PAD);
-    const keyCell = rich ? theme.accent(keyLabel) : keyLabel;
+    const model = resolveSessionDisplayModel(cfg, row);
+    const contextTokens =
+      row.contextTokens ??
+      configuredContextTokens ??
+      (await lookupContextTokensForDisplay(model)) ??
+      configContextTokens;
+    const total = resolveSessionTotalTokens(row);
 
     const line = [
+      ...(showAgentColumn
+        ? [rich ? theme.accentBright(row.agentId.padEnd(AGENT_PAD)) : row.agentId.padEnd(AGENT_PAD)]
+        : []),
       formatKindCell(row.kind, rich),
-      keyCell,
-      formatAgeCell(row.updatedAt, rich),
-      formatModelCell(model, rich),
+      formatSessionKeyCell(row.key, rich),
+      formatSessionAgeCell(row.updatedAt, rich),
+      formatSessionModelCell(model, rich),
+      formatRuntimeCell(row.runtimeLabel, rich),
       formatTokensCell(total, contextTokens ?? null, rich),
-      formatFlagsCell(row, rich),
+      formatSessionFlagsCell(row, rich),
     ].join(" ");
 
     runtime.log(line.trimEnd());

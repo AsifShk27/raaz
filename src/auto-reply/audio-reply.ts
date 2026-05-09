@@ -1,10 +1,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-
 import type { OpenClawConfig } from "../config/config.js";
 import { logVerbose, shouldLogVerbose } from "../globals.js";
+import { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
 import { splitMediaFromOutput } from "../media/parse.js";
 import { runExec } from "../process/exec.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
@@ -47,15 +46,22 @@ export async function synthesizeReplyAudio(params: {
   const { cfg, ctx, replyText } = params;
   const runtime = params.runtime ?? defaultRuntime;
   const replyConfig = cfg.audio?.reply;
-  if (!replyConfig?.command?.length) return undefined;
+  if (!replyConfig?.command?.length) {
+    return undefined;
+  }
 
   const trimmedText = replyText.trim();
-  if (!trimmedText) return undefined;
+  if (!trimmedText) {
+    return undefined;
+  }
 
   const timeoutMs = Math.max((replyConfig.timeoutSeconds ?? 45) * 1000, 1_000);
   const id = crypto.randomUUID();
-  const textPath = path.join(os.tmpdir(), `clawdbot-reply-${id}.txt`);
-  const audioPath = path.join(os.tmpdir(), `clawdbot-reply-${id}.ogg`);
+  // Keep synthesized media under OpenClaw's trusted temp root so media send-path
+  // allowlists work consistently for both service and foreground runs.
+  const tmpRoot = resolvePreferredOpenClawTmpDir();
+  const textPath = path.join(tmpRoot, `openclaw-reply-${id}.txt`);
+  const audioPath = path.join(tmpRoot, `openclaw-reply-${id}.ogg`);
 
   try {
     await fs.writeFile(textPath, trimmedText, "utf8");
@@ -65,10 +71,10 @@ export async function synthesizeReplyAudio(params: {
       ReplyTextFile: textPath,
       ReplyAudioPath: audioPath,
     };
-    const argv = replyConfig.command.map((part) =>
-      applyTemplate(part, templateCtx),
-    );
-    if (!argv.length || !argv[0]) return undefined;
+    const argv = replyConfig.command.map((part) => applyTemplate(part, templateCtx));
+    if (!argv.length || !argv[0]) {
+      return undefined;
+    }
     if (shouldLogVerbose()) {
       logVerbose(`Synthesizing audio via command: ${argv.join(" ")}`);
     }
@@ -81,7 +87,9 @@ export async function synthesizeReplyAudio(params: {
     if (!mediaUrls?.length && (await fileExists(audioPath))) {
       mediaUrls = [audioPath];
     }
-    if (!mediaUrls?.length) return undefined;
+    if (!mediaUrls?.length) {
+      return undefined;
+    }
     return { mediaUrls, audioAsVoice: parsed.audioAsVoice };
   } catch (err) {
     runtime.error?.(`Audio reply failed: ${String(err)}`);
